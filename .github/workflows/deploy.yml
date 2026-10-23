@@ -19,7 +19,7 @@ jobs:
           
       - name: Build Web
         run: |
-          flutter create . --platforms=web
+          flutter create . --platforms=web --project-name=sistema_gestionycontrolluxury
           flutter build web --base-href "/${{ github.event.repository.name }}/"
           
       - name: Upload Artifacts
