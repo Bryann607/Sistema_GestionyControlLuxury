@@ -1972,7 +1972,7 @@ class RestaurantStore extends ChangeNotifier {
       if (open) {
         await _client.from('turnos_caja').insert({
           'cajero_id': userId,
-          'monto_apertura': countedCash ?? 0,
+          'monto_apertura': countedCash,
         });
       } else {
         final shifts = await _client
@@ -1989,16 +1989,16 @@ class RestaurantStore extends ChangeNotifier {
             .from('turnos_caja')
             .update({
               'cerrado_en': DateTime.now().toIso8601String(),
-              'monto_cierre': countedCash ?? 0,
+              'monto_cierre': countedCash,
             })
             .eq('id', shifts.first['id']);
       }
     }
     shiftOpen = open;
     if (open) {
-      openingCash = countedCash ?? 0;
+      openingCash = countedCash;
     } else {
-      closedCash = countedCash ?? 0;
+      closedCash = countedCash;
     }
     if (_client == null) await _persist();
     _recordLocalAudit(

@@ -64,8 +64,11 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result == null || result.isEmpty) return;
     try {
       await store.requestPasswordRecovery(result);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Si el correo está registrado, recibirás instrucciones para recuperar el acceso.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Si el correo está registrado, recibirás instrucciones para recuperar el acceso.'),
+        ));
+      }
     } catch (exception) {
       if (mounted) setState(() => error = '$exception');
     }

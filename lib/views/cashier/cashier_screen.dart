@@ -478,7 +478,7 @@ class _CashierScreenState extends State<CashierScreen> {
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: store.shiftOpen ? 'Efectivo contado al cierre' : 'Fondo inicial (puede ser S/ 0.00)',
                               prefixText: 'S/ ',
                             ),

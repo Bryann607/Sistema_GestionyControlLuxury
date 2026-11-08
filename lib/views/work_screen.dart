@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:luxury_app/controllers/restaurant_store.dart';
-import 'package:luxury_app/core/theme/app_colors.dart';
 import 'package:luxury_app/models/models.dart';
 import 'package:luxury_app/views/admin/admin_screen.dart';
 import 'package:luxury_app/views/cashier/cashier_screen.dart';
