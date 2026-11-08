@@ -675,8 +675,10 @@ class _AdminScreenState extends State<AdminScreen> {
     if (confirmed != true) return;
     await _run(() async {
       await store.sendStaffRecoveryEmail(member);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Enlace enviado a ${member.email}.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Enlace enviado a ${member.email}.')));
+      }
     });
   }
 

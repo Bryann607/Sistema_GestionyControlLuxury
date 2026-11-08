@@ -177,15 +177,19 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
               .select('id,cliente,telefono,modalidad').eq('id', draft['id']).maybeSingle();
           if (existing == null || existing['cliente'] != draft['cliente'] ||
               existing['telefono'] != draft['telefono'] ||
-              existing['modalidad'] != draft['modalidad']) rethrow;
+              existing['modalidad'] != draft['modalidad']) {
+            rethrow;
+          }
         }
         _pending.removeWhere((item) => item['id'] == draft['id']);
         await _saveDrafts();
       }
       await _refresh();
     } catch (_) {
-      if (mounted) setState(() => message =
-        'No se sincronizaron todos los pedidos. Los pendientes siguen guardados en este dispositivo.');
+      if (mounted) {
+        setState(() => message =
+          'No se sincronizaron todos los pedidos. Los pendientes siguen guardados en este dispositivo.');
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
