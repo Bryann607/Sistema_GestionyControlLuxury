@@ -48,32 +48,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _recoverPassword() async {
-    final recoveryEmail = TextEditingController(text: email.text.trim());
-    final result = await showDialog<String>(context: context, builder: (context) => AlertDialog(
-      title: const Text('Recuperar contraseña'),
-      content: SizedBox(width: 380, child: TextField(controller: recoveryEmail,
-        keyboardType: TextInputType.emailAddress,
-        decoration: const InputDecoration(labelText: 'Correo registrado'))),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-        FilledButton(onPressed: () => Navigator.pop(context, recoveryEmail.text.trim()), child: const Text('Enviar enlace')),
-      ],
-    ));
-    recoveryEmail.dispose();
-    if (result == null || result.isEmpty) return;
-    try {
-      await store.requestPasswordRecovery(result);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Si el correo está registrado, recibirás instrucciones para recuperar el acceso.'),
-        ));
-      }
-    } catch (exception) {
-      if (mounted) setState(() => error = '$exception');
-    }
-  }
-
   @override
   void dispose() {
     email.dispose();
@@ -91,7 +65,9 @@ class _LoginScreenState extends State<LoginScreen> {
             if (!narrow)
               Expanded(
                 child: Container(
-                  color: luxuryBrown,
+                  decoration: const BoxDecoration(gradient: LinearGradient(
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
+                    colors: [Color(0xFF181916), Color(0xFF372016), Color(0xFF5E2B18)])),
                   padding: const EdgeInsets.all(54),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -119,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 10),
                       const Text(
-                        'Sabor oriental. Servicio excepcional.',
+                        'Tradición oriental, servicio memorable.',
                         style: TextStyle(
                           color: Color(0xFFF5D7B8),
                           fontSize: 20,
@@ -127,14 +103,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'Comandas, cocina, caja e inventario en armonía, con una experiencia diseñada para Luxury.',
+                        'Cada pedido, cada mesa y cada detalle de tu restaurante, en un solo lugar.',
                         style: TextStyle(color: Colors.white70, height: 1.5),
                       ),
                       const Spacer(),
                       Text(
-                        store.isConnected
-                            ? 'SUPABASE · CONECTADO'
-                            : 'RESTAURANTE ORIENTAL · CHINCHA',
+                        'RESTAURANTE ORIENTAL · CHINCHA',
                         style: const TextStyle(
                           color: Colors.white54,
                           fontSize: 11,
@@ -159,18 +133,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 14),
                         ],
                         Text(
-                          store.isConnected
-                              ? 'Bienvenido a Luxury'
-                              : 'Bienvenido a Luxury',
+                          'Bienvenido a Luxury',
                           style: Theme.of(context).textTheme.headlineMedium
                               ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           store.isConnected
-                              ? 'Ingresa a tu espacio de trabajo del restaurante.'
-                              : 'Elige el espacio de trabajo para recorrer la demostración.',
+                              ? 'Tu espacio para gestionar cada detalle del servicio.'
+                              : 'Explora las funciones del restaurante.',
                         ),
+                        const SizedBox(height: 24),
+                        Container(height: 4, width: 52, decoration: BoxDecoration(
+                            color: luxuryGold, borderRadius: BorderRadius.circular(8))),
                         const SizedBox(height: 24),
                         if (store.errorMessage != null) ...[
                           ErrorBanner(message: store.errorMessage!),
@@ -199,10 +174,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               prefixIcon: Icon(Icons.lock_outline),
                             ),
                           ),
-                          Align(alignment: Alignment.centerRight, child: TextButton(
-                            onPressed: busy ? null : _recoverPassword,
-                            child: const Text('¿Olvidaste tu contraseña?'),
-                          )),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 10),
+                            child: Row(children: [
+                              Icon(Icons.admin_panel_settings_outlined, size: 17, color: luxuryGold),
+                              SizedBox(width: 8),
+                              Expanded(child: Text('¿Problemas con tu acceso? Solicita ayuda presencial al administrador.',
+                                  style: TextStyle(fontSize: 12, color: Colors.black54))),
+                            ]),
+                          ),
                           const SizedBox(height: 8),
                           SizedBox(
                             width: double.infinity,
@@ -253,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 6),
                           const Text(
-                            'Modo local de demostración: los cambios se conservan en este dispositivo y no se envían a Supabase.',
+                            'Demostración local: los cambios se conservan solamente en este dispositivo.',
                             style: TextStyle(
                               color: Colors.black54,
                               fontSize: 12,

@@ -1910,24 +1910,19 @@ class RestaurantStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> resetStaffPassword(StaffMember member, String temporaryPassword) async {
-    if (_client == null) throw StateError('El cambio de contraseña requiere Supabase Auth.');
-    if (temporaryPassword.length < 8) throw StateError('La contraseña debe tener al menos 8 caracteres.');
+  /// Only an administrator can initiate an access reset; the employee receives
+  /// a one-use recovery link at the email already saved on their profile.
+  Future<void> sendStaffRecoveryEmail(StaffMember member) async {
+    if (role != StaffRole.administrator) {
+      throw StateError('Solo administración puede enviar enlaces de acceso.');
+    }
+    if (_client == null) {
+      throw StateError('El envío de correos requiere el servicio de autenticación.');
+    }
     final response = await _client.functions.invoke('administrar-usuarios', body: {
-      'action': 'reset', 'userId': member.id, 'password': temporaryPassword,
+      'action': 'reset', 'userId': member.id,
     });
     _checkFunctionResult(response);
-  }
-
-  Future<void> changeOwnPassword(String newPassword) async {
-    if (_client == null) throw StateError('Esta función requiere una cuenta conectada.');
-    if (newPassword.length < 8) throw StateError('La contraseña debe tener al menos 8 caracteres.');
-    await _client.auth.updateUser(UserAttributes(password: newPassword));
-  }
-
-  Future<void> requestPasswordRecovery(String email) async {
-    if (_client == null) throw StateError('Supabase no está configurado.');
-    await _client.auth.resetPasswordForEmail(email.trim());
   }
 
   Future<void> toggleStaff(StaffMember member) async {

@@ -69,10 +69,15 @@ Deno.serve(async (req) => {
       return json(200,{ok:true});
     }
     if (action === 'reset') {
-      if (!userId || password.length < 8) return json(400, {error:'Usuario y contraseña de 8 caracteres requeridos'});
-      const {error} = await admin.auth.admin.updateUserById(userId, {password});
-      if (error) return json(400,{error:error.message});
-      return json(200,{ok:true});
+      if (!userId) return json(400, {error:'Selecciona un usuario'});
+      // Resolve email on the server: the caller cannot redirect recovery to another address.
+      const {data: employee, error: employeeError} = await admin.from('usuarios')
+        .select('correo,activo').eq('id', userId).single();
+      if (employeeError || !employee || employee.activo !== true || !employee.correo)
+        return json(404, {error:'No se encontró una cuenta activa con correo registrado'});
+      const {error: mailError} = await admin.auth.resetPasswordForEmail(employee.correo);
+      if (mailError) return json(502, {error:'No se pudo enviar el correo: ' + mailError.message});
+      return json(200, {ok:true, emailSent:true});
     }
     return json(400,{error:'Acción desconocida'});
   } catch (error) { return json(500,{error: error instanceof Error ? error.message : 'Error inesperado'}); }

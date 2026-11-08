@@ -611,28 +611,32 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Future<void> _resetStaffPassword(StaffMember member) async {
-    final password = TextEditingController();
-    final result = await showDialog<String>(
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Restablecer acceso de ${member.name}'),
-        content: SizedBox(width: 400, child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Define una contraseña temporal. El empleado deberá cambiarla desde su cuenta. No compartas contraseñas por correo.'),
-            const SizedBox(height: 12),
-            TextField(controller: password, obscureText: true,
-              decoration: const InputDecoration(labelText: 'Nueva contraseña temporal')),
-          ],
-        )),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Enviar acceso al correo'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Text('Después de validar presencialmente la identidad de ${member.name}, '
+              'se enviará un enlace de restablecimiento a ${member.email}. '
+              'Nadie podrá ver ni enviar contraseñas en texto plano.'),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, password.text), child: const Text('Restablecer')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.mark_email_read_outlined),
+            label: const Text('Enviar enlace'),
+          ),
         ],
       ),
     );
-    if (result != null) await _run(() => store.resetStaffPassword(member, result));
-    password.dispose();
+    if (confirmed != true) return;
+    await _run(() async {
+      await store.sendStaffRecoveryEmail(member);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Enlace enviado a ${member.email}.')));
+    });
   }
 
   Future<void> _printReceipt(Map<String, dynamic> receipt) async {
@@ -1394,7 +1398,7 @@ class _AdminScreenState extends State<AdminScreen> {
                       onPressed: () => _editStaff(member),
                     ),
                     if (!managerOnly && store.isConnected) IconButton(
-                      tooltip: 'Restablecer contraseña',
+                      tooltip: 'Enviar enlace de restablecimiento',
                       icon: const Icon(Icons.key_outlined),
                       onPressed: () => _resetStaffPassword(member),
                     ),

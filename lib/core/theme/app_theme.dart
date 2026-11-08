@@ -11,7 +11,7 @@ ThemeData buildLuxuryTheme() => ThemeData(
     error: luxuryRed,
     surface: luxuryBone,
   ),
-  scaffoldBackgroundColor: luxuryBone,
+  scaffoldBackgroundColor: const Color(0xFFF8F6F3),
   dividerColor: const Color(0xFFEADBD0),
   textTheme: const TextTheme(
     headlineMedium: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -.5),
@@ -27,7 +27,7 @@ ThemeData buildLuxuryTheme() => ThemeData(
     color: Colors.white,
     elevation: 0,
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(19),
+      borderRadius: BorderRadius.circular(22),
       side: const BorderSide(color: Color(0xFFE8DED6)),
     ),
   ),
@@ -44,9 +44,9 @@ ThemeData buildLuxuryTheme() => ThemeData(
     style: FilledButton.styleFrom(
       backgroundColor: luxuryGold,
       foregroundColor: const Color(0xFF241010),
-      minimumSize: const Size(44, 44),
+      minimumSize: const Size(48, 48),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(14),
       ),
     ),
   ),
