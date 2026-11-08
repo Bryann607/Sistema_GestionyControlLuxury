@@ -36,8 +36,8 @@ class RestaurantStore extends ChangeNotifier {
   String displayName = 'Equipo Luxury';
   String? errorMessage;
   bool loading = true;
-  bool shiftOpen = true;
-  double openingCash = 200;
+  bool shiftOpen = false;
+  double openingCash = 0;
   double closedCash = 0;
   bool get isConnected => _client != null;
   bool get isDemo => !isConnected;
@@ -884,8 +884,8 @@ class RestaurantStore extends ChangeNotifier {
     categories.clear();
     receipts.clear();
     auditEntries.clear();
-    shiftOpen = true;
-    openingCash = 200;
+    shiftOpen = false;
+    openingCash = 0;
     closedCash = 0;
     _seed();
     final prefs = await SharedPreferences.getInstance();
@@ -1858,11 +1858,19 @@ class RestaurantStore extends ChangeNotifier {
     required String name,
     required String email,
     required StaffRole role,
+    String? password,
   }) async {
     if (_client != null) {
-      throw StateError(
-        'En modo conectado crea la cuenta en Supabase Auth y luego asigna su perfil en usuarios.',
-      );
+      if (password == null || password.length < 8) {
+        throw StateError('Indica una contraseña temporal de al menos 8 caracteres.');
+      }
+      await _client.functions.invoke('administrar-usuarios', body: {
+        'action': 'create', 'name': name.trim(), 'email': email.trim(),
+        'role': role.databaseValue, 'password': password,
+      }).then(_checkFunctionResult);
+      await _loadRemoteData();
+      notifyListeners();
+      return;
     }
     staff.add(
       StaffMember(
@@ -1874,6 +1882,52 @@ class RestaurantStore extends ChangeNotifier {
     );
     await _persist();
     notifyListeners();
+  }
+
+  void _checkFunctionResult(FunctionResponse response) {
+    if (response.status < 200 || response.status >= 300) {
+      final data = response.data;
+      throw StateError(data is Map ? (data['error']?.toString() ?? 'Error del servidor') : 'No se pudo completar la operación (${response.status}).');
+    }
+  }
+
+  Future<void> updateStaffMember(StaffMember member, {
+    required String name, required String email, required StaffRole role,
+  }) async {
+    if (_client != null) {
+      final response = await _client.functions.invoke('administrar-usuarios', body: {
+        'action': 'update', 'userId': member.id,
+        'name': name.trim(), 'email': email.trim(), 'role': role.databaseValue,
+      });
+      _checkFunctionResult(response);
+      await _loadRemoteData();
+    } else {
+      final index = staff.indexWhere((item) => item.id == member.id);
+      if (index < 0) throw StateError('Usuario no encontrado.');
+      staff[index] = member.copyWith(name: name.trim(), email: email.trim(), role: role);
+      await _persist();
+    }
+    notifyListeners();
+  }
+
+  Future<void> resetStaffPassword(StaffMember member, String temporaryPassword) async {
+    if (_client == null) throw StateError('El cambio de contraseña requiere Supabase Auth.');
+    if (temporaryPassword.length < 8) throw StateError('La contraseña debe tener al menos 8 caracteres.');
+    final response = await _client.functions.invoke('administrar-usuarios', body: {
+      'action': 'reset', 'userId': member.id, 'password': temporaryPassword,
+    });
+    _checkFunctionResult(response);
+  }
+
+  Future<void> changeOwnPassword(String newPassword) async {
+    if (_client == null) throw StateError('Esta función requiere una cuenta conectada.');
+    if (newPassword.length < 8) throw StateError('La contraseña debe tener al menos 8 caracteres.');
+    await _client.auth.updateUser(UserAttributes(password: newPassword));
+  }
+
+  Future<void> requestPasswordRecovery(String email) async {
+    if (_client == null) throw StateError('Supabase no está configurado.');
+    await _client.auth.resetPasswordForEmail(email.trim());
   }
 
   Future<void> toggleStaff(StaffMember member) async {
@@ -1911,6 +1965,9 @@ class RestaurantStore extends ChangeNotifier {
 
   Future<void> setShiftOpen(bool open, {double? countedCash}) async {
     if (open == shiftOpen) return;
+    if (countedCash == null || !countedCash.isFinite || countedCash < 0) {
+      throw StateError('El monto de caja debe ser un número igual o mayor a S/ 0.00.');
+    }
     if (_client != null) {
       if (open) {
         await _client.from('turnos_caja').insert({
@@ -2094,8 +2151,8 @@ class RestaurantStore extends ChangeNotifier {
           );
         }),
       );
-    shiftOpen = saved['shiftOpen'] as bool? ?? true;
-    openingCash = (saved['openingCash'] as num?)?.toDouble() ?? 200;
+    shiftOpen = saved['shiftOpen'] as bool? ?? false;
+    openingCash = (saved['openingCash'] as num?)?.toDouble() ?? 0;
     closedCash = (saved['closedCash'] as num?)?.toDouble() ?? 0;
     _nextId = saved['nextId'] as int? ?? 500;
   }

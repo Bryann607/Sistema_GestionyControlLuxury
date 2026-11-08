@@ -70,3 +70,7 @@ La versión 0.1.2 adapta encabezados y registros al ancho disponible. En pantall
 Las pruebas de interfaz recorren las ocho secciones de administración, las tres pestañas de inventario y los espacios de mesero, cocina y caja. Se comprueban anchos de 320, 390, 600, 640, 768, 844 y 1280 píxeles, orientación vertical y horizontal, texto ampliado al 150 %, ausencia de errores de distribución y espacio suficiente para los nombres de los registros. También se abre una comanda y se agrega un producto para comprobar sus controles y desplazamiento. Se ejecutan con datos de demostración locales y no escriben en Supabase.
 
 Se mantienen las tres pruebas de conexión y acceso. Consultar tablas y funciones confirma la estructura; la prueba completa de escritura desde la aplicación requiere iniciar sesión con una cuenta autorizada y autorización para utilizar datos de prueba. La actualización del diseño no cambia datos, tablas, cuentas, funciones ni permisos de Supabase.
+
+## Actualización de usuarios, caja y apariencia (noviembre de 2026)
+
+Lee [docs/IMPLEMENTACION_2026.md](docs/IMPLEMENTACION_2026.md) antes de publicar. Se requieren pasos en Supabase para activar la gestión de usuarios; delivery y sincronización offline quedan especificados como pendientes, no simulados como funcionalidades completas.

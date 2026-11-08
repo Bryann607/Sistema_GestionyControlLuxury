@@ -127,3 +127,33 @@ Future<void> printReceiptPdf({
     onLayout: (_) async => document.save(),
   );
 }
+
+/// Documento informativo: no registra pago ni emite nota de venta.
+Future<void> printPreBillPdf(RestaurantOrder order) async {
+  final document = pw.Document();
+  document.addPage(pw.Page(
+    pageFormat: PdfPageFormat(80 * PdfPageFormat.mm, 230 * PdfPageFormat.mm,
+      marginAll: 5 * PdfPageFormat.mm),
+    build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Center(child: pw.Text('LUXURY · PRECUENTA',
+        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16))),
+      pw.Center(child: pw.Text('Documento informativo · NO PAGADO')),
+      pw.SizedBox(height: 8),
+      pw.Text('Mesa ${order.tableNumber} · Pedido #${order.id}'),
+      pw.Divider(),
+      ...order.lines.map((line) => pw.Row(children: [
+        pw.Expanded(child: pw.Text('${line.quantity} x ${line.name}')),
+        pw.Text('S/ ${line.subtotal.toStringAsFixed(2)}'),
+      ])),
+      pw.Divider(),
+      pw.Text('Total: S/ ${order.total.toStringAsFixed(2)}'),
+      pw.Text('Abonos: S/ ${order.paid.toStringAsFixed(2)}'),
+      pw.Text('Saldo pendiente: S/ ${order.balance.toStringAsFixed(2)}',
+        style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+      pw.SizedBox(height: 10),
+      pw.Text('Esta precuenta no es una nota de venta ni comprobante SUNAT.',
+        style: const pw.TextStyle(fontSize: 8)),
+    ]),
+  ));
+  await Printing.layoutPdf(name: 'precuenta-${order.id}.pdf', onLayout: (_) async => document.save());
+}

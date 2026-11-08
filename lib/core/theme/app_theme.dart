@@ -12,6 +12,12 @@ ThemeData buildLuxuryTheme() => ThemeData(
     surface: luxuryBone,
   ),
   scaffoldBackgroundColor: luxuryBone,
+  dividerColor: const Color(0xFFEADBD0),
+  textTheme: const TextTheme(
+    headlineMedium: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -.5),
+    titleLarge: TextStyle(fontWeight: FontWeight.w800),
+    titleMedium: TextStyle(fontWeight: FontWeight.w700),
+  ),
   appBarTheme: const AppBarTheme(
     backgroundColor: luxuryBrown,
     foregroundColor: Colors.white,
@@ -21,7 +27,7 @@ ThemeData buildLuxuryTheme() => ThemeData(
     color: Colors.white,
     elevation: 0,
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(19),
       side: const BorderSide(color: Color(0xFFE8DED6)),
     ),
   ),

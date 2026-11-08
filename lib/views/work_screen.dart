@@ -52,6 +52,31 @@ class WorkScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _changePassword(BuildContext context) async {
+    final password = TextEditingController();
+    final confirmation = TextEditingController();
+    final result = await showDialog<String>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Cambiar mi contraseña'),
+      content: SizedBox(width: 380, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Nueva contraseña')),
+        const SizedBox(height: 12),
+        TextField(controller: confirmation, obscureText: true, decoration: const InputDecoration(labelText: 'Confirmar contraseña')),
+      ])),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(onPressed: () => Navigator.pop(context, password.text == confirmation.text ? password.text : ''), child: const Text('Actualizar')),
+      ],
+    ));
+    password.dispose(); confirmation.dispose();
+    if (result == null) return;
+    try {
+      await store.changeOwnPassword(result);
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Contraseña actualizada.')));
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final role = store.role!;
@@ -60,7 +85,7 @@ class WorkScreen extends StatelessWidget {
         titleSpacing: 18,
         title: Row(
           children: [
-            const Icon(Icons.restaurant, color: luxuryGold),
+            ClipOval(child: Image.asset('assets/branding/luxury_logo.png', width: 34, height: 34, fit: BoxFit.cover)),
             const SizedBox(width: 10),
             const Text(
               'LUXURY',
@@ -93,6 +118,7 @@ class WorkScreen extends StatelessWidget {
             onSelected: (value) {
               if (value == 'logout') unawaited(store.signOut());
               if (value == 'reset') unawaited(_resetDemo(context));
+              if (value == 'password') unawaited(_changePassword(context));
             },
             itemBuilder: (context) => [
               PopupMenuItem<String>(
@@ -105,6 +131,7 @@ class WorkScreen extends StatelessWidget {
                   value: 'reset',
                   child: Text('Reiniciar demostración'),
                 ),
+              if (store.isConnected) const PopupMenuItem(value: 'password', child: Text('Cambiar contraseña')),
               const PopupMenuItem(
                 value: 'logout',
                 child: Text('Cerrar sesión'),

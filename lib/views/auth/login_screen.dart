@@ -48,6 +48,29 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _recoverPassword() async {
+    final recoveryEmail = TextEditingController(text: email.text.trim());
+    final result = await showDialog<String>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Recuperar contraseña'),
+      content: SizedBox(width: 380, child: TextField(controller: recoveryEmail,
+        keyboardType: TextInputType.emailAddress,
+        decoration: const InputDecoration(labelText: 'Correo registrado'))),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(onPressed: () => Navigator.pop(context, recoveryEmail.text.trim()), child: const Text('Enviar enlace')),
+      ],
+    ));
+    recoveryEmail.dispose();
+    if (result == null || result.isEmpty) return;
+    try {
+      await store.requestPasswordRecovery(result);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Si el correo está registrado, recibirás instrucciones para recuperar el acceso.')));
+    } catch (exception) {
+      if (mounted) setState(() => error = '$exception');
+    }
+  }
+
   @override
   void dispose() {
     email.dispose();
@@ -72,17 +95,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       const Spacer(),
                       Container(
-                        width: 68,
-                        height: 68,
+                        width: 170, height: 170,
                         decoration: BoxDecoration(
-                          color: luxuryGold,
-                          borderRadius: BorderRadius.circular(20),
+                          shape: BoxShape.circle, color: const Color(0xFFFFF8E9),
+                          border: Border.all(color: luxuryGold, width: 3),
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 24, offset: Offset(0, 10))],
                         ),
-                        child: const Icon(
-                          Icons.restaurant,
-                          size: 36,
-                          color: luxuryBrown,
-                        ),
+                        padding: const EdgeInsets.all(7),
+                        child: ClipOval(child: Image.asset('assets/branding/luxury_logo.png', fit: BoxFit.cover)),
                       ),
                       const SizedBox(height: 24),
                       Text(
@@ -96,7 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 10),
                       const Text(
-                        'Una mesa. Todo el servicio.',
+                        'Sabor oriental. Servicio excepcional.',
                         style: TextStyle(
                           color: Color(0xFFF5D7B8),
                           fontSize: 20,
@@ -104,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'Administración, cocina y atención conectadas en una sola plataforma.',
+                        'Comandas, cocina, caja e inventario en armonía, con una experiencia diseñada para Luxury.',
                         style: TextStyle(color: Colors.white70, height: 1.5),
                       ),
                       const Spacer(),
@@ -132,16 +152,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (narrow) ...[
-                          const Icon(
-                            Icons.restaurant,
-                            size: 40,
-                            color: luxuryBrown,
-                          ),
+                          ClipOval(child: Image.asset('assets/branding/luxury_logo.png', width: 84, height: 84, fit: BoxFit.cover)),
                           const SizedBox(height: 14),
                         ],
                         Text(
                           store.isConnected
-                              ? 'Iniciar sesión'
+                              ? 'Bienvenido a Luxury'
                               : 'Bienvenido a Luxury',
                           style: Theme.of(context).textTheme.headlineMedium
                               ?.copyWith(fontWeight: FontWeight.w800),
@@ -149,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 8),
                         Text(
                           store.isConnected
-                              ? 'Usa tu cuenta autorizada de Supabase Auth.'
+                              ? 'Ingresa a tu espacio de trabajo del restaurante.'
                               : 'Elige el espacio de trabajo para recorrer la demostración.',
                         ),
                         const SizedBox(height: 24),
@@ -180,7 +196,11 @@ class _LoginScreenState extends State<LoginScreen> {
                               prefixIcon: Icon(Icons.lock_outline),
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          Align(alignment: Alignment.centerRight, child: TextButton(
+                            onPressed: busy ? null : _recoverPassword,
+                            child: const Text('¿Olvidaste tu contraseña?'),
+                          )),
+                          const SizedBox(height: 8),
                           SizedBox(
                             width: double.infinity,
                             child: FilledButton(

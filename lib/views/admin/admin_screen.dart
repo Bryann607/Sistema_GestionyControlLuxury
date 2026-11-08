@@ -544,62 +544,52 @@ class _AdminScreenState extends State<AdminScreen> {
     capacity.dispose();
   }
 
-  Future<void> _editStaff() async {
-    final name = TextEditingController();
-    final email = TextEditingController();
-    var role = StaffRole.waiter;
-    final result = await showDialog<(String, String, StaffRole)>(
+  Future<void> _editStaff([StaffMember? existing]) async {
+    final name = TextEditingController(text: existing?.name ?? '');
+    final email = TextEditingController(text: existing?.email ?? '');
+    final password = TextEditingController();
+    var role = existing?.role ?? StaffRole.waiter;
+    final result = await showDialog<(String, String, StaffRole, String)>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Agregar personal'),
+          title: Text(existing == null ? 'Crear usuario' : 'Editar usuario'),
           content: SizedBox(
-            width: 400,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: name,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre completo',
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(controller: name, decoration: const InputDecoration(labelText: 'Nombre completo')),
+                  const SizedBox(height: 12),
+                  TextField(controller: email, keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Correo de acceso')),
+                  if (existing == null) ...[
+                    const SizedBox(height: 12),
+                    TextField(controller: password, obscureText: true,
+                      decoration: const InputDecoration(labelText: 'Contraseña temporal (mínimo 8 caracteres)')),
+                    const SizedBox(height: 8),
+                    const Text('En Supabase se crea la cuenta y se envía un enlace para establecer su contraseña. No se envía la contraseña en texto plano.',
+                      style: TextStyle(fontSize: 12)),
+                  ],
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<StaffRole>(
+                    initialValue: role,
+                    decoration: const InputDecoration(labelText: 'Rol'),
+                    items: StaffRole.values.map((value) => DropdownMenuItem(
+                      value: value, child: Text(value.label),
+                    )).toList(),
+                    onChanged: (value) => setDialogState(() => role = value ?? role),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Correo'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<StaffRole>(
-                  initialValue: role,
-                  decoration: const InputDecoration(labelText: 'Rol'),
-                  items: StaffRole.values
-                      .map(
-                        (value) => DropdownMenuItem(
-                          value: value,
-                          child: Text(value.label),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) =>
-                      setDialogState(() => role = value ?? role),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
             FilledButton(
-              onPressed: () => Navigator.pop(context, (
-                name.text.trim(),
-                email.text.trim(),
-                role,
-              )),
-              child: const Text('Agregar'),
+              onPressed: () => Navigator.pop(context, (name.text.trim(), email.text.trim(), role, password.text)),
+              child: Text(existing == null ? 'Crear cuenta' : 'Guardar cambios'),
             ),
           ],
         ),
@@ -610,15 +600,39 @@ class _AdminScreenState extends State<AdminScreen> {
         if (result.$1.isEmpty || !result.$2.contains('@')) {
           throw StateError('Indica un nombre y un correo válidos.');
         }
-        await store.addStaffMember(
-          name: result.$1,
-          email: result.$2,
-          role: result.$3,
-        );
+        if (existing != null) {
+          await store.updateStaffMember(existing, name: result.$1, email: result.$2, role: result.$3);
+        } else {
+          await store.addStaffMember(name: result.$1, email: result.$2, role: result.$3, password: result.$4);
+        }
       });
     }
-    name.dispose();
-    email.dispose();
+    name.dispose(); email.dispose(); password.dispose();
+  }
+
+  Future<void> _resetStaffPassword(StaffMember member) async {
+    final password = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Restablecer acceso de ${member.name}'),
+        content: SizedBox(width: 400, child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Define una contraseña temporal. El empleado deberá cambiarla desde su cuenta. No compartas contraseñas por correo.'),
+            const SizedBox(height: 12),
+            TextField(controller: password, obscureText: true,
+              decoration: const InputDecoration(labelText: 'Nueva contraseña temporal')),
+          ],
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(context, password.text), child: const Text('Restablecer')),
+        ],
+      ),
+    );
+    if (result != null) await _run(() => store.resetStaffPassword(member, result));
+    password.dispose();
   }
 
   Future<void> _printReceipt(Map<String, dynamic> receipt) async {
@@ -1350,7 +1364,7 @@ class _AdminScreenState extends State<AdminScreen> {
           trailing: managerOnly
               ? null
               : FilledButton.icon(
-                  onPressed: _editStaff,
+                  onPressed: () => _editStaff(),
                   icon: const Icon(Icons.person_add_alt),
                   label: const Text('Nuevo usuario'),
                 ),
@@ -1374,6 +1388,16 @@ class _AdminScreenState extends State<AdminScreen> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Chip(label: Text(member.role.label)),
+                    if (!managerOnly) IconButton(
+                      tooltip: 'Editar usuario',
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: () => _editStaff(member),
+                    ),
+                    if (!managerOnly && store.isConnected) IconButton(
+                      tooltip: 'Restablecer contraseña',
+                      icon: const Icon(Icons.key_outlined),
+                      onPressed: () => _resetStaffPassword(member),
+                    ),
                     Switch(
                       value: member.active,
                       onChanged: managerOnly

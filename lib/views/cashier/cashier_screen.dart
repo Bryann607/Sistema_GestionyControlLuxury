@@ -270,6 +270,14 @@ class _CashierScreenState extends State<CashierScreen> {
                       ),
                     ),
                   Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: OutlinedButton.icon(
+                      onPressed: () => _run(() => printPreBillPdf(order)),
+                      icon: const Icon(Icons.receipt_long_outlined),
+                      label: const Text('Ver / imprimir precuenta (sin cobrar)'),
+                    ),
+                  ),
+                  Padding(
                     padding: const EdgeInsets.all(14),
                     child: SizedBox(
                       width: double.infinity,
@@ -457,7 +465,7 @@ class _CashierScreenState extends State<CashierScreen> {
                       final controller = TextEditingController(
                         text: store.shiftOpen
                             ? (store.openingCash + cash).toStringAsFixed(2)
-                            : '200',
+                            : '0.00',
                       );
                       final counted = await showDialog<double>(
                         context: context,
@@ -471,7 +479,7 @@ class _CashierScreenState extends State<CashierScreen> {
                               decimal: true,
                             ),
                             decoration: const InputDecoration(
-                              labelText: 'Efectivo contado',
+                              labelText: store.shiftOpen ? 'Efectivo contado al cierre' : 'Fondo inicial (puede ser S/ 0.00)',
                               prefixText: 'S/ ',
                             ),
                           ),
