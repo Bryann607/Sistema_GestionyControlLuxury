@@ -262,21 +262,35 @@ class _WaiterScreenState extends State<WaiterScreen> {
 
   Widget _floor() {
     final tables = store.tables.where((table) => table.active).toList();
+    // In landscape windows there is not enough vertical space for a hero,
+    // a stacked SectionTitle and the bottom navigation. Keep the primary
+    // action at the very top and reachable without scrolling.
+    final shortViewport = MediaQuery.sizeOf(context).height < 500;
+    final newOrderButton = FilledButton.icon(
+      onPressed: tables.isEmpty ? null : () => _openOrder(tables.first),
+      icon: const Icon(Icons.add),
+      label: const Text('Nuevo pedido'),
+    );
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(shortViewport ? 12 : 20),
       children: [
-        const LuxuryBanner(eyebrow: 'Salón y atención', title: 'Cada mesa, una experiencia',
-          description: 'Organiza el servicio, registra comandas y acompaña cada pedido.',
-          icon: Icons.ramen_dining_rounded),
-        SectionTitle(
-          title: 'Mesas',
-          subtitle: 'Toca una mesa para abrir el servicio',
-          trailing: FilledButton.icon(
-            onPressed: tables.isEmpty ? null : () => _openOrder(tables.first),
-            icon: const Icon(Icons.add),
-            label: const Text('Nuevo pedido'),
+        if (shortViewport) ...[
+          Row(children: [
+            const Expanded(child: Text('Mesas',
+              style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800))),
+            newOrderButton,
+          ]),
+          const SizedBox(height: 10),
+        ] else ...[
+          const LuxuryBanner(eyebrow: 'Salón y atención', title: 'Cada mesa, una experiencia',
+            description: 'Organiza el servicio, registra comandas y acompaña cada pedido.',
+            icon: Icons.ramen_dining_rounded),
+          SectionTitle(
+            title: 'Mesas',
+            subtitle: 'Toca una mesa para abrir el servicio',
+            trailing: newOrderButton,
           ),
-        ),
+        ],
         Wrap(
           spacing: 9,
           runSpacing: 9,
@@ -900,6 +914,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
         ),
         bottomNavigationBar: narrow && widget.navigationController == null
             ? NavigationBar(
+                height: MediaQuery.sizeOf(context).height < 500 ? 64 : 80,
                 selectedIndex: page,
                 onDestinationSelected: (value) => setState(() => page = value),
                 destinations: List.generate(

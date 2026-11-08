@@ -710,6 +710,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
         ),
         bottomNavigationBar: narrow && widget.navigationController == null
             ? NavigationBar(
+                height: MediaQuery.sizeOf(context).height < 500 ? 64 : 80,
                 selectedIndex: page,
                 onDestinationSelected: (value) => setState(() => page = value),
                 destinations: List.generate(
