@@ -2,7 +2,7 @@
 
 Aplicación Flutter conectada al proyecto **SBLuxury** de Supabase.
 
-**Abrir aplicación:** https://andersonbg-hub.github.io/Sistema_GestionyControlLuxury/
+**Abrir aplicación:** https://bryann607.github.io/Sistema_GestionyControlLuxury/
 
 ## Estructura del repositorio
 
