@@ -20,16 +20,56 @@ class _StockRequestDraft {
 }
 
 class AdminScreen extends StatefulWidget {
-  const AdminScreen({super.key, required this.store, this.managerOnly = false});
+  const AdminScreen({super.key, required this.store, this.managerOnly = false, this.navigationController});
   final RestaurantStore store;
   final bool managerOnly;
+  final ValueNotifier<int>? navigationController;
 
   @override
   State<AdminScreen> createState() => _AdminScreenState();
 }
 
 class _AdminScreenState extends State<AdminScreen> {
-  int page = 0;
+  int _page = 0;
+  int get page => _page;
+  set page(int value) {
+    _page = value;
+    final controller = widget.navigationController;
+    if (controller != null && controller.value != value) {
+      controller.value = value;
+    }
+  }
+
+  void _onNavigationChange() {
+    final value = widget.navigationController?.value;
+    if (value != null && value != _page && mounted) {
+      setState(() => _page = value);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _page = widget.navigationController?.value ?? 0;
+    widget.navigationController?.addListener(_onNavigationChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant AdminScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.navigationController != widget.navigationController) {
+      oldWidget.navigationController?.removeListener(_onNavigationChange);
+      widget.navigationController?.addListener(_onNavigationChange);
+      _page = widget.navigationController?.value ?? _page;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.navigationController?.removeListener(_onNavigationChange);
+    super.dispose();
+  }
+
   int inventoryTab = 0;
   String query = '';
   String category = 'Todas';
@@ -1931,6 +1971,9 @@ class _AdminScreenState extends State<AdminScreen> {
               Icons.report_problem_outlined,
               Icons.history,
             ];
+      if (widget.navigationController != null) {
+        return _content();
+      }
       if (constraints.maxWidth < 760) {
         return Column(
           children: [

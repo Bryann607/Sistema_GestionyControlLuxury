@@ -9,15 +9,55 @@ import 'package:luxury_app/services/receipt_pdf.dart';
 import 'package:luxury_app/widgets/widgets.dart';
 
 class CashierScreen extends StatefulWidget {
-  const CashierScreen({super.key, required this.store});
+  const CashierScreen({super.key, required this.store, this.navigationController});
   final RestaurantStore store;
+  final ValueNotifier<int>? navigationController;
 
   @override
   State<CashierScreen> createState() => _CashierScreenState();
 }
 
 class _CashierScreenState extends State<CashierScreen> {
-  int page = 0;
+  int _page = 0;
+  int get page => _page;
+  set page(int value) {
+    _page = value;
+    final controller = widget.navigationController;
+    if (controller != null && controller.value != value) {
+      controller.value = value;
+    }
+  }
+
+  void _onNavigationChange() {
+    final value = widget.navigationController?.value;
+    if (value != null && value != _page && mounted) {
+      setState(() => _page = value);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _page = widget.navigationController?.value ?? 0;
+    widget.navigationController?.addListener(_onNavigationChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant CashierScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.navigationController != widget.navigationController) {
+      oldWidget.navigationController?.removeListener(_onNavigationChange);
+      widget.navigationController?.addListener(_onNavigationChange);
+      _page = widget.navigationController?.value ?? _page;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.navigationController?.removeListener(_onNavigationChange);
+    super.dispose();
+  }
+
   String method = 'Efectivo';
   RestaurantStore get store => widget.store;
 
@@ -600,7 +640,7 @@ class _CashierScreenState extends State<CashierScreen> {
       return Scaffold(
         body: Row(
           children: [
-            if (!narrow) ...[
+            if (!narrow && widget.navigationController == null) ...[
               NavigationRail(
                 scrollable: true,
                 selectedIndex: page,
@@ -622,7 +662,7 @@ class _CashierScreenState extends State<CashierScreen> {
             Expanded(child: body),
           ],
         ),
-        bottomNavigationBar: narrow
+        bottomNavigationBar: narrow && widget.navigationController == null
             ? NavigationBar(
                 selectedIndex: page,
                 onDestinationSelected: (value) => setState(() => page = value),

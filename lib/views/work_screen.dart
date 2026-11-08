@@ -9,9 +9,23 @@ import 'package:luxury_app/views/kitchen/kitchen_screen.dart';
 import 'package:luxury_app/views/waiter/waiter_screen.dart';
 import 'package:luxury_app/views/orders/external_orders_screen.dart';
 
-class WorkScreen extends StatelessWidget {
+class WorkScreen extends StatefulWidget {
   const WorkScreen({super.key, required this.store});
   final RestaurantStore store;
+
+  @override
+  State<WorkScreen> createState() => _WorkScreenState();
+}
+
+class _WorkScreenState extends State<WorkScreen> {
+  final ValueNotifier<int> _section = ValueNotifier<int>(0);
+  RestaurantStore get store => widget.store;
+
+  @override
+  void dispose() {
+    _section.dispose();
+    super.dispose();
+  }
 
   Future<void> _resetDemo(BuildContext context) async {
     final confirm = await showDialog<bool>(context: context, builder: (dialog) => AlertDialog(
@@ -45,67 +59,128 @@ class WorkScreen extends StatelessWidget {
     ]),
   );
 
+  static const _adminLabels = [
+    'Resumen', 'Menú y catálogo', 'Inventario', 'Usuarios y roles',
+    'Mesas', 'Reportes', 'Incidencias', 'Auditoría',
+  ];
+  static const _adminIcons = [
+    Icons.dashboard_outlined, Icons.restaurant_menu, Icons.inventory_2_outlined,
+    Icons.groups_outlined, Icons.table_restaurant, Icons.bar_chart,
+    Icons.report_problem_outlined, Icons.history,
+  ];
+  static const _managerLabels = [
+    'Resumen', 'Usuarios', 'Mesas', 'Incidencias', 'Reportes', 'Auditoría',
+  ];
+  static const _managerIcons = [
+    Icons.dashboard_outlined, Icons.groups_outlined, Icons.table_restaurant,
+    Icons.report_problem_outlined, Icons.bar_chart, Icons.history,
+  ];
+  static const _waiterLabels = [
+    'Mesas', 'Nuevo pedido', 'Mis pedidos', 'Historial', 'Perfil',
+  ];
+  static const _waiterIcons = [
+    Icons.table_restaurant, Icons.add_shopping_cart, Icons.receipt_long,
+    Icons.history, Icons.person_outline,
+  ];
+  static const _kitchenLabels = ['Comandas', 'Insumos y carta', 'Historial'];
+  static const _kitchenIcons = [
+    Icons.soup_kitchen_outlined, Icons.inventory_2_outlined, Icons.history,
+  ];
+  static const _cashierLabels = [
+    'Cuentas y cobros', 'Notas de venta', 'Arqueo de caja', 'Actividad',
+  ];
+  static const _cashierIcons = [
+    Icons.payments_outlined, Icons.receipt_long, Icons.point_of_sale, Icons.history,
+  ];
+
+  (List<String>, List<IconData>) _menuForRole(StaffRole role) => switch (role) {
+    StaffRole.administrator => (_adminLabels, _adminIcons),
+    StaffRole.manager => (_managerLabels, _managerIcons),
+    StaffRole.waiter => (_waiterLabels, _waiterIcons),
+    StaffRole.kitchen || StaffRole.headChef => (_kitchenLabels, _kitchenIcons),
+    StaffRole.cashier => (_cashierLabels, _cashierIcons),
+  };
+
+  void _selectSection(BuildContext context, int section, bool compact) {
+    _section.value = section;
+    if (compact) Navigator.of(context).pop();
+  }
+
   Widget _sidebar(BuildContext context, {required bool compact}) {
     final role = store.role!;
+    final (labels, icons) = _menuForRole(role);
     return Container(
-      width: compact ? null : 258,
+      width: compact ? null : 256,
       decoration: const BoxDecoration(gradient: LinearGradient(
         begin: Alignment.topLeft, end: Alignment.bottomRight,
-        colors: [Color(0xFF181B1D), Color(0xFF2B1B17)])),
+        colors: [Color(0xFF261910), Color(0xFF432719)])),
       child: SafeArea(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _identity(),
-        const Divider(color: Color(0xFF574139), height: 1),
-        const Padding(padding: EdgeInsets.fromLTRB(24, 25, 16, 10), child: Text(
-          'ESPACIO DE TRABAJO', style: TextStyle(color: Color(0xFFB7A6A0),
-          fontSize: 10, letterSpacing: 1.8, fontWeight: FontWeight.w700))),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Container(
-          decoration: BoxDecoration(color: const Color(0xFF5D3927), borderRadius: BorderRadius.circular(14)),
-          child: ListTile(
-            leading: const Icon(Icons.dashboard_rounded, color: luxuryGold),
-            title: Text(role.label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-            subtitle: const Text('Panel de operaciones', style: TextStyle(color: Color(0xFFD5C7C0), fontSize: 12)),
-            onTap: compact ? () => Navigator.pop(context) : null,
+        const Divider(color: Color(0xFF76503B), height: 1),
+        const Padding(padding: EdgeInsets.fromLTRB(22, 16, 14, 6), child: Text(
+          'MENÚ PRINCIPAL', style: TextStyle(color: Color(0xFFE9B58C),
+            fontSize: 10, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
+        Expanded(child: AnimatedBuilder(
+          animation: _section,
+          builder: (context, _) => ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            children: [
+              for (var i = 0; i < labels.length; i++)
+                Padding(padding: const EdgeInsets.only(bottom: 3), child: ListTile(
+                  dense: true,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  tileColor: _section.value == i ? const Color(0xFF805034) : null,
+                  leading: Icon(icons[i], size: 21,
+                    color: _section.value == i ? const Color(0xFFFFD6A0) : const Color(0xFFE7C9AF)),
+                  title: Text(labels[i], style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: _section.value == i ? FontWeight.w800 : FontWeight.w500)),
+                  onTap: () => _selectSection(context, i, compact),
+                )),
+              const Divider(color: Color(0xFF76503B), height: 22),
+              ListTile(
+                dense: true,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                leading: const Icon(Icons.delivery_dining_rounded, color: Color(0xFFFFC783)),
+                title: const Text('Delivery y para llevar',
+                  style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                onTap: () {
+                  if (compact) Navigator.of(context).pop();
+                  Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) => ExternalOrdersScreen(store: store)));
+                },
+              ),
+            ],
           ),
         )),
-        const Padding(padding: EdgeInsets.fromLTRB(24, 20, 24, 0), child: Text(
-          'Utiliza las secciones del panel para gestionar el servicio.',
-          style: TextStyle(color: Color(0xFFBEB2AC), fontSize: 12, height: 1.5))),
-        Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 0), child: ListTile(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          leading: const Icon(Icons.delivery_dining_rounded, color: luxuryGold),
-          title: const Text('Delivery y para llevar',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-          subtitle: const Text('Pedidos sin mesa', style: TextStyle(color: Colors.white60, fontSize: 11)),
-          onTap: () {
-            if (compact) Navigator.pop(context);
-            Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
-              ExternalOrdersScreen(store: store)));
-          },
-        )),
-        const Spacer(),
-        const Divider(color: Color(0xFF574139), height: 1),
-        Padding(padding: const EdgeInsets.fromLTRB(17, 15, 14, 12), child: Row(children: [
-          const CircleAvatar(backgroundColor: Color(0xFF73492D),
-            child: Icon(Icons.person_rounded, color: Colors.white)),
+        const Divider(color: Color(0xFF76503B), height: 1),
+        Padding(padding: const EdgeInsets.fromLTRB(14, 10, 12, 6), child: Row(children: [
+          const CircleAvatar(radius: 19, backgroundColor: Color(0xFF805034),
+            child: Icon(Icons.person_rounded, color: Colors.white, size: 20)),
           const SizedBox(width: 10),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(store.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-            Text(role.label, style: const TextStyle(color: Color(0xFFC9ADA0), fontSize: 12)),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            Text(role.label, style: const TextStyle(color: Color(0xFFE8B58F), fontSize: 12)),
           ])),
         ])),
         if (store.isDemo) ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 22),
+          dense: true,
           leading: const Icon(Icons.restart_alt, color: Colors.white70),
-          title: const Text('Reiniciar demostración', style: TextStyle(color: Colors.white70)),
-          onTap: () { if (compact) Navigator.pop(context); unawaited(_resetDemo(context)); },
+          title: const Text('Reiniciar demostración', style: TextStyle(color: Colors.white70, fontSize: 13)),
+          onTap: () {
+            if (compact) Navigator.of(context).pop();
+            unawaited(_resetDemo(context));
+          },
         ),
-        Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 10), child: ListTile(
+        Padding(padding: const EdgeInsets.fromLTRB(10, 2, 10, 12), child: ListTile(
+          dense: true,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          tileColor: const Color(0xFF49302B),
-          leading: const Icon(Icons.logout_rounded, color: Color(0xFFFFAC7C)),
-          title: const Text('Cerrar sesión', style: TextStyle(color: Color(0xFFFFC19D),
-            fontWeight: FontWeight.w800)),
+          tileColor: const Color(0xFF60362C),
+          leading: const Icon(Icons.logout_rounded, color: Color(0xFFFFB58A)),
+          title: const Text('Cerrar sesión', style: TextStyle(
+            color: Color(0xFFFFD1B4), fontSize: 13, fontWeight: FontWeight.w800)),
           onTap: () => unawaited(store.signOut()),
         )),
       ])),
@@ -115,24 +190,21 @@ class WorkScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final role = store.role!;
-    final compact = MediaQuery.sizeOf(context).width < 1080;
+    // En pantallas estrechas el único menú lateral se convierte en cajón.
+    final compact = MediaQuery.sizeOf(context).width < 950;
     final content = switch (role) {
-      StaffRole.administrator => AdminScreen(store: store),
-      StaffRole.manager => AdminScreen(store: store, managerOnly: true),
-      StaffRole.kitchen => KitchenScreen(store: store),
-      StaffRole.headChef => KitchenScreen(store: store),
-      StaffRole.waiter => WaiterScreen(store: store),
-      StaffRole.cashier => CashierScreen(store: store),
+      StaffRole.administrator => AdminScreen(store: store, navigationController: _section),
+      StaffRole.manager => AdminScreen(store: store, managerOnly: true, navigationController: _section),
+      StaffRole.kitchen => KitchenScreen(store: store, navigationController: _section),
+      StaffRole.headChef => KitchenScreen(store: store, navigationController: _section),
+      StaffRole.waiter => WaiterScreen(store: store, navigationController: _section),
+      StaffRole.cashier => CashierScreen(store: store, navigationController: _section),
     };
     return Scaffold(
       drawer: compact ? Drawer(width: 286, child: _sidebar(context, compact: true)) : null,
       appBar: compact ? AppBar(
         title: Text('LUXURY  ·  ${role.label}',
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: .5)),
-        actions: [Builder(builder: (context) => IconButton(
-          tooltip: 'Menú de cuenta', icon: const Icon(Icons.account_circle_outlined),
-          onPressed: () => Scaffold.of(context).openDrawer(),
-        ))],
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
       ) : null,
       body: Row(children: [
         if (!compact) _sidebar(context, compact: false),

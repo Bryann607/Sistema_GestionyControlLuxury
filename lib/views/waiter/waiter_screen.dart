@@ -9,8 +9,9 @@ import 'package:luxury_app/models/models.dart';
 import 'package:luxury_app/widgets/widgets.dart';
 
 class WaiterScreen extends StatefulWidget {
-  const WaiterScreen({super.key, required this.store});
+  const WaiterScreen({super.key, required this.store, this.navigationController});
   final RestaurantStore store;
+  final ValueNotifier<int>? navigationController;
 
   @override
   State<WaiterScreen> createState() => _WaiterScreenState();
@@ -24,7 +25,46 @@ class _CartLine {
 }
 
 class _WaiterScreenState extends State<WaiterScreen> {
-  int page = 0;
+  int _page = 0;
+  int get page => _page;
+  set page(int value) {
+    _page = value;
+    final controller = widget.navigationController;
+    if (controller != null && controller.value != value) {
+      controller.value = value;
+    }
+  }
+
+  void _onNavigationChange() {
+    final value = widget.navigationController?.value;
+    if (value != null && value != _page && mounted) {
+      setState(() => _page = value);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _page = widget.navigationController?.value ?? 0;
+    widget.navigationController?.addListener(_onNavigationChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant WaiterScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.navigationController != widget.navigationController) {
+      oldWidget.navigationController?.removeListener(_onNavigationChange);
+      widget.navigationController?.addListener(_onNavigationChange);
+      _page = widget.navigationController?.value ?? _page;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.navigationController?.removeListener(_onNavigationChange);
+    super.dispose();
+  }
+
   int? selectedTableId;
   int diners = 2;
   String category = 'Todas';
@@ -787,7 +827,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
           leading: const CircleAvatar(child: Icon(Icons.person_outline)),
           title: Text(store.displayName),
           subtitle: Text(
-            '${store.role?.label ?? 'Equipo'} · ${store.isConnected ? 'Supabase' : 'Demostración local'}',
+            store.role?.label ?? 'Equipo',
           ),
         ),
       ),
@@ -851,14 +891,14 @@ class _WaiterScreenState extends State<WaiterScreen> {
       return Scaffold(
         body: Row(
           children: [
-            if (!narrow) ...[
+            if (!narrow && widget.navigationController == null) ...[
               _nav(constraints.maxWidth < 1050),
               const VerticalDivider(width: 1),
             ],
             Expanded(child: _body()),
           ],
         ),
-        bottomNavigationBar: narrow
+        bottomNavigationBar: narrow && widget.navigationController == null
             ? NavigationBar(
                 selectedIndex: page,
                 onDestinationSelected: (value) => setState(() => page = value),

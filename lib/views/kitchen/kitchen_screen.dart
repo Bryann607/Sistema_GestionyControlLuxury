@@ -8,15 +8,55 @@ import 'package:luxury_app/models/models.dart';
 import 'package:luxury_app/widgets/widgets.dart';
 
 class KitchenScreen extends StatefulWidget {
-  const KitchenScreen({super.key, required this.store});
+  const KitchenScreen({super.key, required this.store, this.navigationController});
   final RestaurantStore store;
+  final ValueNotifier<int>? navigationController;
 
   @override
   State<KitchenScreen> createState() => _KitchenScreenState();
 }
 
 class _KitchenScreenState extends State<KitchenScreen> {
-  int page = 0;
+  int _page = 0;
+  int get page => _page;
+  set page(int value) {
+    _page = value;
+    final controller = widget.navigationController;
+    if (controller != null && controller.value != value) {
+      controller.value = value;
+    }
+  }
+
+  void _onNavigationChange() {
+    final value = widget.navigationController?.value;
+    if (value != null && value != _page && mounted) {
+      setState(() => _page = value);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _page = widget.navigationController?.value ?? 0;
+    widget.navigationController?.addListener(_onNavigationChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant KitchenScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.navigationController != widget.navigationController) {
+      oldWidget.navigationController?.removeListener(_onNavigationChange);
+      widget.navigationController?.addListener(_onNavigationChange);
+      _page = widget.navigationController?.value ?? _page;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.navigationController?.removeListener(_onNavigationChange);
+    super.dispose();
+  }
+
   String query = '';
   bool notesOnly = false;
   RestaurantStore get store => widget.store;
@@ -646,7 +686,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
       return Scaffold(
         body: Row(
           children: [
-            if (!narrow) ...[
+            if (!narrow && widget.navigationController == null) ...[
               NavigationRail(
                 scrollable: true,
                 selectedIndex: page,
@@ -668,7 +708,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
             Expanded(child: body),
           ],
         ),
-        bottomNavigationBar: narrow
+        bottomNavigationBar: narrow && widget.navigationController == null
             ? NavigationBar(
                 selectedIndex: page,
                 onDestinationSelected: (value) => setState(() => page = value),
