@@ -1864,10 +1864,14 @@ class RestaurantStore extends ChangeNotifier {
       if (password == null || password.length < 8) {
         throw StateError('Indica una contraseña temporal de al menos 8 caracteres.');
       }
-      await _client.functions.invoke('administrar-usuarios', body: {
+      final response = await _client.functions.invoke('administrar-usuarios', body: {
         'action': 'create', 'name': name.trim(), 'email': email.trim(),
         'role': role.databaseValue, 'password': password,
-      }).then(_checkFunctionResult);
+      });
+      _checkFunctionResult(response);
+      if (response.data is Map && response.data['emailSent'] == false) {
+        throw StateError('Usuario creado, pero no se pudo enviar el correo. Revisa SMTP en Supabase y reenvía la invitación desde administración.');
+      }
       await _loadRemoteData();
       notifyListeners();
       return;

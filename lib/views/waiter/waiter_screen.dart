@@ -1,3 +1,4 @@
+import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
 
 import 'package:luxury_app/controllers/restaurant_store.dart';
@@ -224,6 +225,9 @@ class _WaiterScreenState extends State<WaiterScreen> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
+        const LuxuryBanner(eyebrow: 'Salón y atención', title: 'Cada mesa, una experiencia',
+          description: 'Organiza el servicio, registra comandas y acompaña cada pedido.',
+          icon: Icons.ramen_dining_rounded),
         SectionTitle(
           title: 'Mesas',
           subtitle: 'Toca una mesa para abrir el servicio',

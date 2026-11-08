@@ -67,14 +67,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Container(
                   decoration: const BoxDecoration(gradient: LinearGradient(
                     begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    colors: [Color(0xFF181916), Color(0xFF372016), Color(0xFF5E2B18)])),
-                  padding: const EdgeInsets.all(54),
+                    colors: [Color(0xFF15191C), Color(0xFF261B18), Color(0xFF52301D)])),
+                  padding: const EdgeInsets.all(48),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Spacer(),
                       Container(
-                        width: 170, height: 170,
+                        width: 210, height: 210,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle, color: const Color(0xFFFFF8E9),
                           border: Border.all(color: luxuryGold, width: 3),
@@ -95,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 10),
                       const Text(
-                        'Tradición oriental, servicio memorable.',
+                        'Un sabor que reúne. Una gestión que conecta.',
                         style: TextStyle(
                           color: Color(0xFFF5D7B8),
                           fontSize: 20,
@@ -103,12 +103,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'Cada pedido, cada mesa y cada detalle de tu restaurante, en un solo lugar.',
+                        'Mesas, cocina, caja y equipo. Todo coordinado para brindar una gran experiencia.',
                         style: TextStyle(color: Colors.white70, height: 1.5),
                       ),
                       const Spacer(),
                       Text(
-                        'RESTAURANTE ORIENTAL · CHINCHA',
+                        'TRADICIÓN  •  CALIDEZ  •  SERVICIO',
                         style: const TextStyle(
                           color: Colors.white54,
                           fontSize: 11,
@@ -133,17 +133,17 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 14),
                         ],
                         Text(
-                          'Bienvenido a Luxury',
+                          'El servicio comienza aquí',
                           style: Theme.of(context).textTheme.headlineMedium
                               ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           store.isConnected
-                              ? 'Tu espacio para gestionar cada detalle del servicio.'
-                              : 'Explora las funciones del restaurante.',
+                              ? 'Ingresa con tu cuenta de trabajo para comenzar el turno.'
+                              : 'Explora las funciones de Luxury en modo demostración.',
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
                         Container(height: 4, width: 52, decoration: BoxDecoration(
                             color: luxuryGold, borderRadius: BorderRadius.circular(8))),
                         const SizedBox(height: 24),
@@ -189,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: FilledButton(
                               onPressed: busy ? null : _signIn,
                               child: Text(
-                                busy ? 'Conectando…' : 'Iniciar sesión',
+                                busy ? 'Ingresando…' : 'Ingresar al sistema',
                               ),
                             ),
                           ),

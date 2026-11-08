@@ -1,3 +1,4 @@
+import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -1875,7 +1876,13 @@ class _AdminScreenState extends State<AdminScreen> {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1320),
-              child: _pageContent(),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                LuxuryBanner(eyebrow: 'Luxury · administración',
+                  title: managerOnly ? 'Gestión del restaurante' : 'Panel de administración',
+                  description: 'Coordina el equipo, el catálogo y las operaciones del restaurante.',
+                  icon: Icons.space_dashboard_rounded),
+                _pageContent(),
+              ]),
             ),
           ),
         ),

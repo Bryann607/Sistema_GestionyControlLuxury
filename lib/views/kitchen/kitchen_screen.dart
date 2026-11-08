@@ -1,3 +1,4 @@
+import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
 
 import 'package:luxury_app/controllers/restaurant_store.dart';
@@ -217,6 +218,9 @@ class _KitchenScreenState extends State<KitchenScreen> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
+        const LuxuryBanner(eyebrow: 'Cocina en movimiento', title: 'Comandas en preparación',
+          description: 'Visualiza los pedidos, coordina el equipo y mantiene el ritmo del servicio.',
+          icon: Icons.soup_kitchen_rounded),
         SectionTitle(
           title: 'Comandas de cocina',
           subtitle:

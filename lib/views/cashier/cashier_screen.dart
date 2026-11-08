@@ -1,3 +1,4 @@
+import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
 
 import 'package:luxury_app/controllers/restaurant_store.dart';
@@ -213,6 +214,9 @@ class _CashierScreenState extends State<CashierScreen> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
+        const LuxuryBanner(eyebrow: 'Cobros y servicio', title: 'Caja y precuentas',
+          description: 'Consulta cada consumo antes de registrar un pago.',
+          icon: Icons.receipt_long_rounded),
         SectionTitle(
           title: 'Cuentas y cobros',
           subtitle: 'Admite abonos y pagos mixtos por pedido',
