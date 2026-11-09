@@ -2,18 +2,18 @@
 
 Aplicación Flutter conectada al proyecto **SBLuxury** de Supabase.
 
-**Abrir aplicación:** https://andersonbg-hub.github.io/Sistema_GestionyControlLuxury/
+**Abrir aplicación:** https://bryann607.github.io/Sistema_GestionyControlLuxury/
+## Estructura del repositorio
 
-## Organización y publicación actual
+Este repositorio **es** el proyecto Flutter (`pubspec.yaml` está en la raíz).
 
-- `luxury-flutter-fuente/`: código fuente editable y configuración web. Es la única fuente publicada.
-- `.github/workflows/publicar.yml`: ejecuta dependencias y pruebas, recompila Flutter desde la fuente y despliega `build/web` en GitHub Pages.
-- `luxury-web/`: compilación histórica retirada del paquete actualizado; no se necesita para publicar.
+- `lib/`: código de la aplicación, organizado en MVC. Ver [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
+- `test/`: pruebas de conexión, acceso y diseño adaptable.
+- `web/`: plantilla de la plataforma web.
+- `config/supabase.public.json`: URL y clave **publishable** de Supabase.
+- `.github/workflows/publicar.yml`: compila la versión web desde el código fuente y la publica en GitHub Pages al actualizar `main`.
 
-Para ejecutar localmente: `cd luxury-flutter-fuente`, `flutter pub get`, `flutter run -d chrome`.
-La publicación utiliza `config/supabase.public.json` con la configuración pública correspondiente. Nunca subir una clave de servicio.
-
-**Nota de alcance:** los informes de mejoras incluyen requisitos propuestos; no todos implican funciones ya implementadas. Ver `INFORME_AVANCE_Y_CORRECCIONES.docx`.
+Ya no hace falta subir `luxury-web.zip`: la compilación web la genera GitHub Actions en cada publicación.
 
 ## Conexión y acceso
 
@@ -37,26 +37,30 @@ La persona que administra SBLuxury debe:
 
 ## Compilar y actualizar
 
-Descomprimir `luxury-flutter-fuente.zip` y abrir la carpeta que contiene `pubspec.yaml`. Con Flutter instalado:
+Con Flutter instalado, desde la raíz del repositorio:
 
 ```sh
 flutter pub get
 flutter analyze
 flutter test
+flutter run -d chrome --dart-define-from-file=config/supabase.public.json
 flutter build web --release --base-href /Sistema_GestionyControlLuxury/ --dart-define-from-file=config/supabase.public.json
 ```
 
-Comprimir **el contenido** de `build/web/` como `luxury-web.zip`: `index.html`, `main.dart.js`, `assets/` y `canvaskit/` deben quedar en la raíz del ZIP. Reemplazar ese archivo en GitHub mediante **Add file → Upload files → Commit changes**. La pestaña **Actions** muestra el resultado de la publicación.
+Para publicar basta con hacer commit y push a `main`; la pestaña **Actions** muestra el resultado.
+Mantener **Settings → Pages → Source → GitHub Actions**.
 
-Mantener **Settings → Pages → Source → GitHub Actions**. El repositorio es público para utilizar GitHub Pages con el plan gratuito.
+Compilar sin `--dart-define-from-file` abre el modo local de demostración; no usar esa compilación para reemplazar la versión conectada.
 
-Para desarrollar en local con Supabase:
+### Otras plataformas (Android, iOS, escritorio)
+
+El código Flutter es multiplataforma, pero el proyecto solo tiene habilitada la carpeta `web/`. Para agregar las demás, ejecutar una vez en la raíz:
 
 ```sh
-flutter run -d chrome --dart-define-from-file=config/supabase.public.json
+flutter create --platforms=android,ios,windows,macos,linux .
 ```
 
-Compilar sin configuración abre el modo local de demostración; no usar esa compilación para reemplazar la versión conectada.
+Esto agrega las carpetas de plataforma sin tocar `lib/`.
 
 ## Verificación
 
@@ -65,3 +69,7 @@ La versión 0.1.2 adapta encabezados y registros al ancho disponible. En pantall
 Las pruebas de interfaz recorren las ocho secciones de administración, las tres pestañas de inventario y los espacios de mesero, cocina y caja. Se comprueban anchos de 320, 390, 600, 640, 768, 844 y 1280 píxeles, orientación vertical y horizontal, texto ampliado al 150 %, ausencia de errores de distribución y espacio suficiente para los nombres de los registros. También se abre una comanda y se agrega un producto para comprobar sus controles y desplazamiento. Se ejecutan con datos de demostración locales y no escriben en Supabase.
 
 Se mantienen las tres pruebas de conexión y acceso. Consultar tablas y funciones confirma la estructura; la prueba completa de escritura desde la aplicación requiere iniciar sesión con una cuenta autorizada y autorización para utilizar datos de prueba. La actualización del diseño no cambia datos, tablas, cuentas, funciones ni permisos de Supabase.
+
+## Actualización de usuarios, caja y apariencia (noviembre de 2026)
+
+Lee [docs/IMPLEMENTACION_2026.md](docs/IMPLEMENTACION_2026.md) antes de publicar. Se requieren pasos en Supabase para activar la gestión de usuarios; delivery y sincronización offline quedan especificados como pendientes, no simulados como funcionalidades completas.
