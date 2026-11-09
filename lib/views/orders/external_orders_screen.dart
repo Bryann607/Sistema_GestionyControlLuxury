@@ -65,6 +65,8 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
   }
 
   Future<void> _create() async {
+    if (store.role != StaffRole.waiter && store.role != StaffRole.cashier &&
+        store.role != StaffRole.administrator && store.role != StaffRole.manager) return;
     final customer = TextEditingController();
     final phone = TextEditingController();
     final address = TextEditingController();
@@ -84,9 +86,10 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
             children: [
               DropdownButtonFormField<String>(initialValue: type,
                 decoration: const InputDecoration(labelText: 'Modalidad'),
-                items: const [
-                  DropdownMenuItem(value: 'PARA_LLEVAR', child: Text('Para llevar')),
-                  DropdownMenuItem(value: 'DELIVERY', child: Text('Delivery')),
+                items: [
+                  const DropdownMenuItem(value: 'PARA_LLEVAR', child: Text('Para llevar')),
+                  if (store.role != StaffRole.waiter)
+                    const DropdownMenuItem(value: 'DELIVERY', child: Text('Delivery')),
                 ], onChanged: (value) => change(() => type = value ?? type)),
               const SizedBox(height: 10),
               TextField(controller: customer, decoration: const InputDecoration(labelText: 'Nombre del cliente')),
@@ -152,6 +155,7 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
     );
     customer.dispose(); phone.dispose(); address.dispose();
     if (result == null) return;
+    if (store.role == StaffRole.waiter && result['modalidad'] == 'DELIVERY') return;
     setState(() { _pending.add(result); message = null; });
     await _saveDrafts();
     if (store.client != null) await _sync();
