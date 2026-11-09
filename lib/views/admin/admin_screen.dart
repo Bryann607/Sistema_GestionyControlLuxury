@@ -1,3 +1,4 @@
+import 'package:luxury_app/widgets/luxury_feedback.dart';
 import 'package:luxury_app/widgets/luxury_dish_artwork.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
@@ -267,9 +268,7 @@ class _AdminScreenState extends State<AdminScreen> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
+        LuxuryFeedback.error(context, LuxuryFeedback.message(error));
       }
     }
   }

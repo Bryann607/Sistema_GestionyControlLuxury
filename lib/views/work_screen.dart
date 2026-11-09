@@ -7,6 +7,7 @@ import 'package:luxury_app/views/cashier/cashier_screen.dart';
 import 'package:luxury_app/views/kitchen/kitchen_screen.dart';
 import 'package:luxury_app/views/waiter/waiter_screen.dart';
 import 'package:luxury_app/views/orders/external_orders_screen.dart';
+import 'package:luxury_app/widgets/luxury_profile_dialog.dart';
 
 class WorkScreen extends StatefulWidget {
   const WorkScreen({super.key, required this.store});
@@ -46,6 +47,15 @@ class _WorkScreenState extends State<WorkScreen> {
           SnackBar(content: Text('$error')));
       }
     }
+  }
+
+  Future<void> _showProfile(BuildContext context, bool compact) async {
+    final navigatorContext = Navigator.of(context, rootNavigator: true).context;
+    if (compact) Navigator.of(context).pop();
+    await showDialog<void>(
+      context: navigatorContext,
+      builder: (_) => LuxuryProfileDialog(store: store),
+    );
   }
 
   Widget _identity() => Padding(
@@ -142,12 +152,12 @@ class _WorkScreenState extends State<WorkScreen> {
                   onTap: () => _selectSection(context, i, compact),
                 )),
               const Divider(color: Color(0xFF76503B), height: 22),
-              if (role == StaffRole.cashier || role == StaffRole.administrator || role == StaffRole.manager || role == StaffRole.waiter)
+              if (role == StaffRole.cashier || role == StaffRole.administrator || role == StaffRole.manager || role == StaffRole.waiter || role == StaffRole.kitchen || role == StaffRole.headChef)
               ListTile(
                 dense: true,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: const Icon(Icons.delivery_dining_rounded, color: Color(0xFFFFC783)),
-                title: Text(role == StaffRole.waiter ? 'Pedidos para llevar' : 'Delivery y para llevar',
+                title: Text(role == StaffRole.waiter ? 'Pedidos para llevar' : (role == StaffRole.kitchen || role == StaffRole.headChef ? 'Comandas externas' : 'Delivery y para llevar'),
                   style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
                 onTap: () {
                   if (compact) Navigator.of(context).pop();
@@ -159,16 +169,18 @@ class _WorkScreenState extends State<WorkScreen> {
           ),
         )),
         const Divider(color: Color(0xFF76503B), height: 1),
-        Padding(padding: const EdgeInsets.fromLTRB(14, 10, 12, 6), child: Row(children: [
-          const CircleAvatar(radius: 19, backgroundColor: Color(0xFF805034),
+        ListTile(
+          contentPadding: const EdgeInsets.fromLTRB(14, 8, 10, 4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          leading: const CircleAvatar(radius: 19, backgroundColor: Color(0xFF805034),
             child: Icon(Icons.person_rounded, color: Colors.white, size: 20)),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(store.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-            Text(role.label, style: const TextStyle(color: Color(0xFFE8B58F), fontSize: 12)),
-          ])),
-        ])),
+          title: Text(store.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          subtitle: Text('${role.label} · Ver perfil',
+            style: const TextStyle(color: Color(0xFFE8B58F), fontSize: 12)),
+          trailing: const Icon(Icons.chevron_right, color: Colors.white70),
+          onTap: () => _showProfile(context, compact),
+        ),
         if (store.isDemo) ListTile(
           dense: true,
           leading: const Icon(Icons.restart_alt, color: Colors.white70),

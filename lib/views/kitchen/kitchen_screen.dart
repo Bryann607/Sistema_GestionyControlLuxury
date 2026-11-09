@@ -1,3 +1,4 @@
+import 'package:luxury_app/widgets/luxury_feedback.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
 
@@ -66,9 +67,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
+        LuxuryFeedback.error(context, LuxuryFeedback.message(error));
       }
     }
   }
@@ -534,7 +533,14 @@ class _KitchenScreenState extends State<KitchenScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: () => _run(() => store.advanceOrder(order)),
+                onPressed: () => _run(() async {
+                  await store.advanceOrder(order);
+                  if (mounted) {
+                    await LuxuryFeedback.success(context,
+                      title: 'Comanda actualizada',
+                      message: 'El estado del pedido #${order.id} se actualizó correctamente.');
+                  }
+                }),
                 child: Text(nextAction),
               ),
             ),

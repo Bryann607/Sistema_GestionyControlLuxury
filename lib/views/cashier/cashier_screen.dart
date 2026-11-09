@@ -1,3 +1,4 @@
+import 'package:luxury_app/widgets/luxury_feedback.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
 
@@ -66,9 +67,7 @@ class _CashierScreenState extends State<CashierScreen> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
+        LuxuryFeedback.error(context, LuxuryFeedback.message(error));
       }
     }
   }
@@ -235,6 +234,11 @@ class _CashierScreenState extends State<CashierScreen> {
           cashReceived: receivedAmount,
           earlyPaymentConfirmed: result.$5,
         );
+        if (mounted) {
+          await LuxuryFeedback.success(context,
+            title: 'Pago registrado',
+            message: 'El abono de S/ ${value.toStringAsFixed(2)} se registró correctamente.');
+        }
       });
     }
     amount.dispose();

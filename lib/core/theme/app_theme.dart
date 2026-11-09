@@ -26,6 +26,12 @@ ThemeData buildLuxuryTheme() {
       backgroundColor: canvas, foregroundColor: ink,
       elevation: 0, centerTitle: false, scrolledUnderElevation: 0,
     ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      titleTextStyle: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 20),
+    ),
     cardTheme: CardThemeData(
       color: Colors.white, elevation: 0, margin: const EdgeInsets.symmetric(vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20),
@@ -63,6 +69,8 @@ ThemeData buildLuxuryTheme() {
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFF33251F),
+      contentTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
   );

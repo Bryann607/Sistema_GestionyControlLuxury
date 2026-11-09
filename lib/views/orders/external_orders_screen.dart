@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,6 +8,7 @@ import 'package:luxury_app/controllers/restaurant_store.dart';
 import 'package:luxury_app/core/theme/app_colors.dart';
 import 'package:luxury_app/models/models.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
+import 'package:luxury_app/widgets/luxury_feedback.dart';
 
 /// Pedidos sin mesa. Los borradores locales NO se tratan como comandas enviadas.
 /// Requiere la migración SQL incluida para sincronizar entre dispositivos.
@@ -86,11 +88,10 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
     final client = store.client;
     if (client != null) {
       try {
-        final rows = await client
-            .from('pedidos_externos')
-            .select()
-            .order('creado_en', ascending: false)
-            .limit(150);
+        final query = client.from('pedidos_externos').select();
+        final rows = await (store.role == StaffRole.waiter
+            ? query.eq('modalidad', 'PARA_LLEVAR')
+            : query).order('creado_en', ascending: false).limit(150);
         _remote
           ..clear()
           ..addAll(rows.map((row) => Map<String, dynamic>.from(row)));
@@ -160,6 +161,7 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
                     TextField(
                       controller: phone,
                       keyboardType: TextInputType.phone,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
                       decoration: const InputDecoration(
                         labelText: 'Teléfono de contacto',
                       ),
@@ -243,13 +245,13 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
               FilledButton(
                 onPressed: () {
                   if (customer.text.trim().isEmpty ||
-                      phone.text.trim().isEmpty ||
+                      phone.text.trim().length != 9 ||
                       (type == 'DELIVERY' && address.text.trim().isEmpty) ||
                       quantities.isEmpty) {
                     ScaffoldMessenger.of(dialog).showSnackBar(
                       const SnackBar(
                         content: Text(
-                          'Completa cliente, contacto, dirección si corresponde y al menos un platillo.',
+                          'Ingresa el cliente, un celular de 9 dígitos, la dirección si es Delivery y al menos un platillo.',
                         ),
                       ),
                     );
@@ -296,7 +298,11 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
       message = null;
     });
     await _saveDrafts();
-    if (store.client != null) await _sync();
+    if (store.client != null) {
+      await _sync();
+    } else if (mounted) {
+      LuxuryFeedback.error(context, 'Pedido guardado como borrador local. No se envió a cocina.');
+    }
   }
 
   Future<void> _sync() async {
@@ -356,11 +362,13 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
         params: {'p_id': order['id'], 'p_estado': next},
       );
       await _refresh();
+      if (mounted) {
+        await LuxuryFeedback.success(context, title: 'Estado actualizado',
+          message: 'El pedido externo cambió a ${next.toLowerCase()}.');
+      }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(_friendlyError(error))));
+        LuxuryFeedback.error(context, _friendlyError(error));
       }
     } finally {
       if (mounted) setState(() => busy = false);

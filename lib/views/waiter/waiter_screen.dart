@@ -1,5 +1,6 @@
 import 'package:luxury_app/widgets/luxury_dish_artwork.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
+import 'package:luxury_app/widgets/luxury_feedback.dart';
 import 'package:flutter/material.dart';
 
 import 'package:luxury_app/controllers/restaurant_store.dart';
@@ -84,9 +85,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
+        LuxuryFeedback.error(context, LuxuryFeedback.message(error));
       }
     }
   }
@@ -156,14 +155,11 @@ class _WaiterScreenState extends State<WaiterScreen> {
         additionalParentId = null;
         page = 2;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            wasEditing
-                ? 'Cambios del pedido guardados.'
-                : 'Comanda enviada a cocina.',
-          ),
-        ),
+      await LuxuryFeedback.success(context,
+        title: wasEditing ? 'Pedido actualizado' : '¡Comanda registrada!',
+        message: wasEditing
+            ? 'Los cambios del pedido se guardaron correctamente.'
+            : 'La comanda se registró correctamente para su preparación.',
       );
     });
   }
