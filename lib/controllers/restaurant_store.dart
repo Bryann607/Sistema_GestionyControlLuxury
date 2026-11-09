@@ -562,7 +562,7 @@ class RestaurantStore extends ChangeNotifier {
         ? await client
               .from('turnos_caja')
               .select()
-              .eq('cajero_id', userId!)
+              // Caja es un turno operativo del restaurante, no del dispositivo.
               .order('abierto_en', ascending: false)
               .limit(1)
         : <dynamic>[];
@@ -1132,6 +1132,9 @@ class RestaurantStore extends ChangeNotifier {
     double? cashReceived,
     bool earlyPaymentConfirmed = false,
   }) async {
+    if (!shiftOpen) {
+      throw StateError('Caja cerrada. Solicita al administrador la apertura del turno.');
+    }
     if (amount <= 0 || amount > order.balance + 0.001) {
       throw StateError(
         'El monto debe ser mayor a cero y no superar el saldo pendiente.',
@@ -1930,6 +1933,9 @@ class RestaurantStore extends ChangeNotifier {
   }
 
   Future<void> toggleStaff(StaffMember member) async {
+    if (role != StaffRole.administrator || member.id == userId) {
+      throw StateError('No tienes permiso para desactivar esta cuenta.');
+    }
     if (member.role == StaffRole.administrator &&
         member.active &&
         staff
@@ -1963,12 +1969,20 @@ class RestaurantStore extends ChangeNotifier {
   }
 
   Future<void> setShiftOpen(bool open, {double? countedCash}) async {
+    if (role != StaffRole.administrator) {
+      throw StateError('Solo administración puede abrir o cerrar caja.');
+    }
     if (open == shiftOpen) return;
     if (countedCash == null || !countedCash.isFinite || countedCash < 0) {
       throw StateError('El monto de caja debe ser un número igual o mayor a S/ 0.00.');
     }
     if (_client != null) {
       if (open) {
+        final existing = await _client.from('turnos_caja')
+            .select('id').isFilter('cerrado_en', null).limit(1);
+        if (existing.isNotEmpty) {
+          throw StateError('Ya existe una caja abierta. Actualiza la pantalla.');
+        }
         await _client.from('turnos_caja').insert({
           'cajero_id': userId,
           'monto_apertura': countedCash,
@@ -1977,7 +1991,6 @@ class RestaurantStore extends ChangeNotifier {
         final shifts = await _client
             .from('turnos_caja')
             .select('id')
-            .eq('cajero_id', userId!)
             .isFilter('cerrado_en', null)
             .order('abierto_en', ascending: false)
             .limit(1);
