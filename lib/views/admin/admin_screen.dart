@@ -760,29 +760,6 @@ class _AdminScreenState extends State<AdminScreen> {
     onChanged: (value) => setState(() => query = value.toLowerCase().trim()),
   );
 
-  Future<void> _manageCashShift() async {
-    final opening = !store.shiftOpen;
-    final amount = TextEditingController(text: opening ? '0.00' :
-        store.openingCash.toStringAsFixed(2));
-    final counted = await showDialog<double>(context: context,
-      builder: (dialog) => AlertDialog(
-        title: Text(opening ? 'Abrir caja del día' : 'Cerrar caja del día'),
-        content: TextField(controller: amount,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: opening
-            ? 'Fondo inicial' : 'Efectivo contado al cierre', prefixText: 'S/ ')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialog),
-            child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(dialog,
-            double.tryParse(amount.text.replaceAll(',', '.'))),
-            child: const Text('Confirmar')),
-        ],
-      ));
-    amount.dispose();
-    if (counted != null) await _run(() => store.setShiftOpen(opening, countedCash: counted));
-  }
-
   Widget _dashboard() {
     final today = DateTime.now();
     final startToday = DateTime(today.year, today.month, today.day);
@@ -841,19 +818,6 @@ class _AdminScreenState extends State<AdminScreen> {
           title: 'Dashboard general',
           subtitle: 'Resumen del servicio y la operación',
         ),
-        if (!managerOnly) ...[
-          Card(child: Padding(padding: const EdgeInsets.all(14),
-            child: Wrap(spacing: 12, runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center, children: [
-                Icon(store.shiftOpen ? Icons.lock_open : Icons.lock_outline),
-                Text(store.shiftOpen ? 'Caja abierta' : 'Caja cerrada',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-                FilledButton.icon(onPressed: _manageCashShift,
-                  icon: Icon(store.shiftOpen ? Icons.lock_outline : Icons.lock_open),
-                  label: Text(store.shiftOpen ? 'Cerrar caja' : 'Abrir caja')),
-              ]))),
-          const SizedBox(height: 12),
-        ],
         StatGrid(
           children: [
             StatCard(
@@ -1896,13 +1860,6 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
-  String _auditAction(String value) => switch (value.toUpperCase()) {
-    'INSERT' => 'Registró',
-    'UPDATE' => 'Actualizó',
-    'DELETE' => 'Eliminó',
-    _ => value,
-  };
-
   Widget _auditPage() => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -1921,7 +1878,7 @@ class _AdminScreenState extends State<AdminScreen> {
             child: ResponsiveListTile(
               leading: const Icon(Icons.history),
               title: Text(
-                '${_auditAction(entry.action)} · ${entry.entity} #${entry.entityId}',
+                '${entry.action} · ${entry.entity} #${entry.entityId}',
               ),
               subtitle: Text(
                 '${entry.actorName} · ${entry.actorRole} · ${entry.createdAt.toLocal()}',
