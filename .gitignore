@@ -1,0 +1,39 @@
+# Sistema operativo / editor
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+*.iml
+*.ipr
+*.iws
+.idea/
+.history
+.atom/
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# Secretos (la clave "publishable" de config/supabase.public.json SÍ se versiona; nunca subas service_role)
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+key.properties
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+app.*.symbols
+app.*.map.json
+
+# Android
+/android/app/debug
+/android/app/profile
+/android/app/release
