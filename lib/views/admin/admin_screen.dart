@@ -314,10 +314,11 @@ class _AdminScreenState extends State<AdminScreen> {
       text: item?.price.toStringAsFixed(2) ?? '',
     );
     final description = TextEditingController(text: item?.description ?? '');
+    final imageUrl = TextEditingController(text: item?.imageUrl ?? '');
     var selectedCategory =
         item?.category ??
         (store.categories.isEmpty ? 'Chifas' : store.categories.first);
-    final result = await showDialog<(String, String, String, String)>(
+    final result = await showDialog<(String, String, String, String, String)>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -369,6 +370,15 @@ class _AdminScreenState extends State<AdminScreen> {
                         labelText: 'Descripción',
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: imageUrl,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'URL de foto del platillo',
+                        hintText: 'https://ejemplo.com/platillo.jpg',
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -384,6 +394,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   selectedCategory,
                   price.text.trim(),
                   description.text.trim(),
+                  imageUrl.text.trim(),
                 )),
                 child: const Text('Guardar'),
               ),
@@ -398,18 +409,28 @@ class _AdminScreenState extends State<AdminScreen> {
         if (value == null || value < 0) {
           throw StateError('Escribe un precio válido.');
         }
+        final photoUrl = result.$5;
+        final photoUri = Uri.tryParse(photoUrl);
+        if (photoUrl.isNotEmpty &&
+            (photoUri == null ||
+                !['http', 'https'].contains(photoUri.scheme) ||
+                photoUri.host.isEmpty)) {
+          throw StateError('La foto debe tener una URL http o https válida.');
+        }
         await store.saveMenuItem(
           id: item?.id,
           name: result.$1,
           category: result.$2,
           price: value,
           description: result.$4,
+          imageUrl: photoUrl,
         );
       });
     }
     name.dispose();
     price.dispose();
     description.dispose();
+    imageUrl.dispose();
   }
 
   Future<void> _editCategory([String? oldName]) async {

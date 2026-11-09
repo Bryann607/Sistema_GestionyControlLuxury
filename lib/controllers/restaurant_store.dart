@@ -597,6 +597,7 @@ class RestaurantStore extends ChangeNotifier {
             category: categoryRow['nombre'] as String,
             price: (row['precio'] as num).toDouble(),
             description: row['descripcion'] as String? ?? '',
+            imageUrl: row['foto_url'] as String? ?? '',
             available: row['agotado'] != true,
           );
         }),
@@ -1303,6 +1304,7 @@ class RestaurantStore extends ChangeNotifier {
     required String category,
     required double price,
     required String description,
+    String imageUrl = '',
   }) async {
     if (name.trim().isEmpty || price < 0) {
       throw StateError('Indica un nombre y un precio válido.');
@@ -1326,6 +1328,7 @@ class RestaurantStore extends ChangeNotifier {
           name: name,
           price: price,
           description: description,
+          imageUrl: imageUrl,
         );
       } else {
         await _writeMenuItem(
@@ -1334,6 +1337,7 @@ class RestaurantStore extends ChangeNotifier {
           name: name,
           price: price,
           description: description,
+          imageUrl: imageUrl,
         );
       }
       await _loadRemoteData();
@@ -1347,6 +1351,7 @@ class RestaurantStore extends ChangeNotifier {
             category: category,
             price: price,
             description: description.trim(),
+            imageUrl: imageUrl.trim(),
           ),
         );
       } else {
@@ -1357,6 +1362,7 @@ class RestaurantStore extends ChangeNotifier {
             category: category,
             price: price,
             description: description.trim(),
+            imageUrl: imageUrl.trim(),
           ),
         );
       }
@@ -1461,12 +1467,14 @@ class RestaurantStore extends ChangeNotifier {
     required String name,
     required double price,
     required String description,
+    required String imageUrl,
   }) async {
     final values = {
       'categoria_id': categoryId,
       'nombre': name.trim(),
       'precio': price,
       'descripcion': description.trim(),
+      'foto_url': imageUrl.trim().isEmpty ? null : imageUrl.trim(),
     };
     if (id == null) {
       await _client!.from('platillos').insert(values);

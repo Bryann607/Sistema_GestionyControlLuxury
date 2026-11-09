@@ -25,6 +25,24 @@ class LuxuryDishArtwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final url = item.imageUrl.trim();
+    final uri = Uri.tryParse(url);
+    final validUrl = uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.isNotEmpty;
+    if (validUrl) {
+      return Image.network(
+        url,
+        width: compact ? 48 : null,
+        height: compact ? 48 : null,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _fallbackArtwork(),
+      );
+    }
+    return _fallbackArtwork();
+  }
+
+  Widget _fallbackArtwork() {
     final seed = item.id.abs();
     final background = _backgrounds[seed % _backgrounds.length];
     final accent = _accents[seed % _accents.length];

@@ -5,6 +5,7 @@ class MenuItem {
     required this.category,
     required this.price,
     this.description = '',
+    this.imageUrl = '',
     this.available = true,
   });
 
@@ -13,6 +14,7 @@ class MenuItem {
   final String category;
   final double price;
   final String description;
+  final String imageUrl;
   final bool available;
 
   MenuItem copyWith({
@@ -20,6 +22,7 @@ class MenuItem {
     String? category,
     double? price,
     String? description,
+    String? imageUrl,
     bool? available,
   }) => MenuItem(
     id: id,
@@ -27,6 +30,7 @@ class MenuItem {
     category: category ?? this.category,
     price: price ?? this.price,
     description: description ?? this.description,
+    imageUrl: imageUrl ?? this.imageUrl,
     available: available ?? this.available,
   );
 
@@ -36,6 +40,7 @@ class MenuItem {
     'category': category,
     'price': price,
     'description': description,
+    'imageUrl': imageUrl,
     'available': available,
   };
 
@@ -45,6 +50,7 @@ class MenuItem {
     category: json['category'] as String,
     price: (json['price'] as num).toDouble(),
     description: json['description'] as String? ?? '',
+    imageUrl: (json['imageUrl'] ?? json['foto_url']) as String? ?? '',
     available: json['available'] as bool? ?? true,
   );
 }
