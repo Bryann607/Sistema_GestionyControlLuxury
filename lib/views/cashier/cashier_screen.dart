@@ -436,25 +436,24 @@ class _CashierScreenState extends State<CashierScreen> {
   }
 
   Widget _shift() {
-    final today = DateTime.now();
-    bool isToday(DateTime date) {
-      final local = date.toLocal();
-      return local.year == today.year && local.month == today.month &&
-          local.day == today.day;
-    }
-    final paymentsToday = store.orders
-        .expand((order) => order.payments)
-        .where((payment) => isToday(payment.createdAt));
-    final collected = paymentsToday.fold<double>(
-      0, (sum, payment) => sum + payment.amount);
-    final cash = paymentsToday.where((payment) => payment.method == 'Efectivo')
-        .fold<double>(0, (sum, payment) => sum + payment.amount);
+    final collected = store.orders.fold<double>(
+      0,
+      (sum, order) => sum + order.paid,
+    );
+    final cash = store.orders.fold<double>(
+      0,
+      (sum, order) =>
+          sum +
+          order.payments
+              .where((payment) => payment.method == 'Efectivo')
+              .fold<double>(0, (sub, payment) => sub + payment.amount),
+    );
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
         SectionTitle(
           title: 'Arqueo de caja',
-          subtitle: 'Ingresos de hoy; conserva el historial de otros días',
+          subtitle: 'Control de apertura, medios de pago y cierre',
         ),
         Card(
           child: Padding(
@@ -506,12 +505,58 @@ class _CashierScreenState extends State<CashierScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton.icon(
-                    onPressed: null, // Solo administración debe abrir y cerrar caja.
+                    onPressed: () async {
+                      final controller = TextEditingController(
+                        text: store.shiftOpen
+                            ? (store.openingCash + cash).toStringAsFixed(2)
+                            : '0.00',
+                      );
+                      final counted = await showDialog<double>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text(
+                            store.shiftOpen ? 'Cerrar turno' : 'Abrir turno',
+                          ),
+                          content: TextField(
+                            controller: controller,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: store.shiftOpen ? 'Efectivo contado al cierre' : 'Fondo inicial (puede ser S/ 0.00)',
+                              prefixText: 'S/ ',
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancelar'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(
+                                context,
+                                double.tryParse(controller.text),
+                              ),
+                              child: const Text('Confirmar'),
+                            ),
+                          ],
+                        ),
+                      );
+                      controller.dispose();
+                      if (counted != null) {
+                        await _run(
+                          () => store.setShiftOpen(
+                            !store.shiftOpen,
+                            countedCash: counted,
+                          ),
+                        );
+                      }
+                    },
                     icon: Icon(
                       store.shiftOpen ? Icons.lock_outline : Icons.lock_open,
                     ),
                     label: Text(
-                      'Apertura y cierre: administrador',
+                      store.shiftOpen ? 'Cerrar caja' : 'Abrir nuevo turno',
                     ),
                   ),
                 ),

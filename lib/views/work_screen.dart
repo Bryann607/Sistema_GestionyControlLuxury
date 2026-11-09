@@ -142,13 +142,12 @@ class _WorkScreenState extends State<WorkScreen> {
                   onTap: () => _selectSection(context, i, compact),
                 )),
               const Divider(color: Color(0xFF76503B), height: 22),
-              if (role == StaffRole.cashier || role == StaffRole.administrator || role == StaffRole.manager || role == StaffRole.waiter)
               ListTile(
                 dense: true,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: const Icon(Icons.delivery_dining_rounded, color: Color(0xFFFFC783)),
-                title: Text(role == StaffRole.waiter ? 'Pedidos para llevar' : 'Delivery y para llevar',
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                title: const Text('Delivery y para llevar',
+                  style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
                 onTap: () {
                   if (compact) Navigator.of(context).pop();
                   Navigator.of(context).push(MaterialPageRoute<void>(

@@ -702,7 +702,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
           title: history ? 'Historial' : 'Mis pedidos',
           subtitle: history
               ? 'Pedidos cerrados y entregados'
-              : 'Pedidos de hoy y pendientes de jornadas anteriores',
+              : 'Seguimiento de cocina y cuentas pendientes',
         ),
         if (orders.isEmpty)
           EmptyState(
@@ -779,8 +779,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
                             'Saldo ${money(order.balance)}',
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
-                        if (order.tableId > 0 && order.tableNumber > 0 &&
-                            order.status == OrderStatus.paid &&
+                        if (order.status == OrderStatus.paid &&
                             kitchenStage(order) == OrderStatus.delivered &&
                             !order.retirementConfirmed) ...[
                           OutlinedButton.icon(
@@ -822,7 +821,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
   Widget _profile() => ListView(
     padding: const EdgeInsets.all(20),
     children: [
-      const SectionTitle(title: 'Perfil', subtitle: 'Datos de tu cuenta de trabajo'),
+      const SectionTitle(title: 'Perfil', subtitle: 'Sesión de trabajo'),
       Card(
         child: ResponsiveListTile(
           leading: const CircleAvatar(child: Icon(Icons.person_outline)),
@@ -832,22 +831,6 @@ class _WaiterScreenState extends State<WaiterScreen> {
           ),
         ),
       ),
-      const SizedBox(height: 12),
-      Card(child: Column(children: [
-        ResponsiveListTile(leading: const Icon(Icons.badge_outlined),
-          title: const Text('Código de empleado'),
-          subtitle: Text(store.userId ?? 'No registrado')),
-        ResponsiveListTile(leading: const Icon(Icons.work_outline),
-          title: const Text('Cargo'),
-          subtitle: Text(store.role?.label ?? 'Sin asignar')),
-        ResponsiveListTile(leading: const Icon(Icons.mail_outline),
-          title: const Text('Correo de acceso'),
-          subtitle: Text(store.staff.where((person) => person.id == store.userId)
-            .firstOrNull?.email ?? 'No disponible')),
-        const Padding(padding: EdgeInsets.all(12), child: Text(
-          'La foto, el DNI, teléfono, dirección y área requieren campos autorizados en el perfil del personal. No se muestran datos inventados.',
-          style: TextStyle(fontSize: 12))),
-      ])),
       const SizedBox(height: 12),
       Card(
         child: ResponsiveListTile(

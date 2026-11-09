@@ -87,7 +87,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
           maxLength: 240,
           decoration: const InputDecoration(
             labelText: 'Motivo',
-            hintText: 'Describe el problema del pedido',
+            hintText: 'Describe el problema para administración y caja',
           ),
         ),
         actions: [
@@ -152,9 +152,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
                   maxLines: 4,
                   maxLength: 240,
                   decoration: const InputDecoration(
-                    labelText: 'Nuevo insumo a solicitar o detalle del faltante',
-                    helperText: 'El aviso no registra un insumo nuevo en inventario.',
-                    helperMaxLines: 2,
+                    labelText: 'Detalle del aviso',
                   ),
                 ),
               ],
