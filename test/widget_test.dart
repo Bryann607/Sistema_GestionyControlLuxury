@@ -20,8 +20,8 @@ void main() {
     });
     await tester.pumpWidget(LuxuryApp(client: client));
     await tester.pumpAndSettle();
-    expect(find.text('Correo'), findsOneWidget);
-    expect(find.text('Contraseña'), findsOneWidget);
+    expect(find.text('CORREO ELECTRÓNICO'), findsOneWidget);
+    expect(find.text('CONTRASEÑA'), findsOneWidget);
     expect(
       find.text('Elige el espacio de trabajo para recorrer la demostración.'),
       findsNothing,
