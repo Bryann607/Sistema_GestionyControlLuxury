@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luxury_app/controllers/restaurant_store.dart';
+import 'package:luxury_app/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -12,6 +13,8 @@ void main() {
   test('La caja local puede abrirse con cero soles', () async {
     final store = RestaurantStore();
     addTearDown(store.dispose);
+
+    await store.loginDemo(StaffRole.administrator);
 
     expect(store.shiftOpen, isFalse);
     expect(store.openingCash, 0);
@@ -33,5 +36,16 @@ void main() {
       throwsStateError,
     );
     expect(store.shiftOpen, isTrue);
+  });
+  test('Un cajero no puede abrir caja aunque el monto sea cero', () async {
+    final store = RestaurantStore();
+    addTearDown(store.dispose);
+    await store.loginDemo(StaffRole.cashier);
+
+    await expectLater(
+      store.setShiftOpen(true, countedCash: 0),
+      throwsStateError,
+    );
+    expect(store.shiftOpen, isFalse);
   });
 }

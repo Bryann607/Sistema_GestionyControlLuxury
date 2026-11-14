@@ -15,16 +15,21 @@ create table if not exists public.pedidos_externos (
 create index if not exists pedidos_externos_fecha_idx on public.pedidos_externos(creado_en desc);
 alter table public.pedidos_externos enable row level security;
 
+drop policy if exists "Personal activo consulta pedidos externos" on public.pedidos_externos;
 create policy "Personal activo consulta pedidos externos"
 on public.pedidos_externos for select to authenticated
 using (exists (select 1 from public.usuarios u where u.id = auth.uid() and u.activo = true));
 
+drop policy if exists "Atencion crea pedidos externos" on public.pedidos_externos;
 create policy "Atencion crea pedidos externos"
 on public.pedidos_externos for insert to authenticated
 with check (
   creado_por = auth.uid() and estado = 'PENDIENTE' and
   exists (select 1 from public.usuarios u where u.id = auth.uid()
-    and u.activo = true and u.rol in ('ADMINISTRADOR','GERENTE','MESERO','CAJERO'))
+    and u.activo = true and (
+      (u.rol in ('ADMINISTRADOR','GERENTE','CAJERO') and modalidad in ('DELIVERY','PARA_LLEVAR')) or
+      (u.rol = 'MESERO' and modalidad = 'PARA_LLEVAR')
+    ))
 );
 
 -- Restringe actualizaciones según funciones y sin permitir cambios en los importes.

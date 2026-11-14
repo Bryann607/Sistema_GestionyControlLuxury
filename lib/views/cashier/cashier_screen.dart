@@ -1,3 +1,4 @@
+import 'package:luxury_app/widgets/luxury_feedback.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
 
@@ -66,9 +67,7 @@ class _CashierScreenState extends State<CashierScreen> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
+        LuxuryFeedback.error(context, LuxuryFeedback.message(error));
       }
     }
   }
@@ -235,6 +234,11 @@ class _CashierScreenState extends State<CashierScreen> {
           cashReceived: receivedAmount,
           earlyPaymentConfirmed: result.$5,
         );
+        if (mounted) {
+          await LuxuryFeedback.success(context,
+            title: 'Pago registrado',
+            message: 'El abono de S/ ${value.toStringAsFixed(2)} se registró correctamente.');
+        }
       });
     }
     amount.dispose();
@@ -436,24 +440,25 @@ class _CashierScreenState extends State<CashierScreen> {
   }
 
   Widget _shift() {
-    final collected = store.orders.fold<double>(
-      0,
-      (sum, order) => sum + order.paid,
-    );
-    final cash = store.orders.fold<double>(
-      0,
-      (sum, order) =>
-          sum +
-          order.payments
-              .where((payment) => payment.method == 'Efectivo')
-              .fold<double>(0, (sub, payment) => sub + payment.amount),
-    );
+    final today = DateTime.now();
+    bool isToday(DateTime date) {
+      final local = date.toLocal();
+      return local.year == today.year && local.month == today.month &&
+          local.day == today.day;
+    }
+    final paymentsToday = store.orders
+        .expand((order) => order.payments)
+        .where((payment) => isToday(payment.createdAt));
+    final collected = paymentsToday.fold<double>(
+      0, (sum, payment) => sum + payment.amount);
+    final cash = paymentsToday.where((payment) => payment.method == 'Efectivo')
+        .fold<double>(0, (sum, payment) => sum + payment.amount);
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
         SectionTitle(
           title: 'Arqueo de caja',
-          subtitle: 'Control de apertura, medios de pago y cierre',
+          subtitle: 'Ingresos de hoy; conserva el historial de otros días',
         ),
         Card(
           child: Padding(
@@ -505,58 +510,12 @@ class _CashierScreenState extends State<CashierScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton.icon(
-                    onPressed: () async {
-                      final controller = TextEditingController(
-                        text: store.shiftOpen
-                            ? (store.openingCash + cash).toStringAsFixed(2)
-                            : '0.00',
-                      );
-                      final counted = await showDialog<double>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Text(
-                            store.shiftOpen ? 'Cerrar turno' : 'Abrir turno',
-                          ),
-                          content: TextField(
-                            controller: controller,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: store.shiftOpen ? 'Efectivo contado al cierre' : 'Fondo inicial (puede ser S/ 0.00)',
-                              prefixText: 'S/ ',
-                            ),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancelar'),
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.pop(
-                                context,
-                                double.tryParse(controller.text),
-                              ),
-                              child: const Text('Confirmar'),
-                            ),
-                          ],
-                        ),
-                      );
-                      controller.dispose();
-                      if (counted != null) {
-                        await _run(
-                          () => store.setShiftOpen(
-                            !store.shiftOpen,
-                            countedCash: counted,
-                          ),
-                        );
-                      }
-                    },
+                    onPressed: null, // Solo administración debe abrir y cerrar caja.
                     icon: Icon(
                       store.shiftOpen ? Icons.lock_outline : Icons.lock_open,
                     ),
                     label: Text(
-                      store.shiftOpen ? 'Cerrar caja' : 'Abrir nuevo turno',
+                      'Apertura y cierre: administrador',
                     ),
                   ),
                 ),

@@ -1,3 +1,5 @@
+import 'package:luxury_app/widgets/luxury_feedback.dart';
+import 'package:luxury_app/widgets/luxury_dish_artwork.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -266,9 +268,7 @@ class _AdminScreenState extends State<AdminScreen> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
+        LuxuryFeedback.error(context, LuxuryFeedback.message(error));
       }
     }
   }
@@ -313,10 +313,11 @@ class _AdminScreenState extends State<AdminScreen> {
       text: item?.price.toStringAsFixed(2) ?? '',
     );
     final description = TextEditingController(text: item?.description ?? '');
+    final imageUrl = TextEditingController(text: item?.imageUrl ?? '');
     var selectedCategory =
         item?.category ??
         (store.categories.isEmpty ? 'Chifas' : store.categories.first);
-    final result = await showDialog<(String, String, String, String)>(
+    final result = await showDialog<(String, String, String, String, String)>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -368,6 +369,15 @@ class _AdminScreenState extends State<AdminScreen> {
                         labelText: 'Descripción',
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: imageUrl,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'URL de foto del platillo',
+                        hintText: 'https://ejemplo.com/platillo.jpg',
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -383,6 +393,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   selectedCategory,
                   price.text.trim(),
                   description.text.trim(),
+                  imageUrl.text.trim(),
                 )),
                 child: const Text('Guardar'),
               ),
@@ -397,18 +408,28 @@ class _AdminScreenState extends State<AdminScreen> {
         if (value == null || value < 0) {
           throw StateError('Escribe un precio válido.');
         }
+        final photoUrl = result.$5;
+        final photoUri = Uri.tryParse(photoUrl);
+        if (photoUrl.isNotEmpty &&
+            (photoUri == null ||
+                !['http', 'https'].contains(photoUri.scheme) ||
+                photoUri.host.isEmpty)) {
+          throw StateError('La foto debe tener una URL http o https válida.');
+        }
         await store.saveMenuItem(
           id: item?.id,
           name: result.$1,
           category: result.$2,
           price: value,
           description: result.$4,
+          imageUrl: photoUrl,
         );
       });
     }
     name.dispose();
     price.dispose();
     description.dispose();
+    imageUrl.dispose();
   }
 
   Future<void> _editCategory([String? oldName]) async {
@@ -760,6 +781,29 @@ class _AdminScreenState extends State<AdminScreen> {
     onChanged: (value) => setState(() => query = value.toLowerCase().trim()),
   );
 
+  Future<void> _manageCashShift() async {
+    final opening = !store.shiftOpen;
+    final amount = TextEditingController(text: opening ? '0.00' :
+        store.openingCash.toStringAsFixed(2));
+    final counted = await showDialog<double>(context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(opening ? 'Abrir caja del día' : 'Cerrar caja del día'),
+        content: TextField(controller: amount,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: opening
+            ? 'Fondo inicial' : 'Efectivo contado al cierre', prefixText: 'S/ ')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog),
+            child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(dialog,
+            double.tryParse(amount.text.replaceAll(',', '.'))),
+            child: const Text('Confirmar')),
+        ],
+      ));
+    amount.dispose();
+    if (counted != null) await _run(() => store.setShiftOpen(opening, countedCash: counted));
+  }
+
   Widget _dashboard() {
     final today = DateTime.now();
     final startToday = DateTime(today.year, today.month, today.day);
@@ -818,6 +862,19 @@ class _AdminScreenState extends State<AdminScreen> {
           title: 'Dashboard general',
           subtitle: 'Resumen del servicio y la operación',
         ),
+        if (!managerOnly) ...[
+          Card(child: Padding(padding: const EdgeInsets.all(14),
+            child: Wrap(spacing: 12, runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center, children: [
+                Icon(store.shiftOpen ? Icons.lock_open : Icons.lock_outline),
+                Text(store.shiftOpen ? 'Caja abierta' : 'Caja cerrada',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+                FilledButton.icon(onPressed: _manageCashShift,
+                  icon: Icon(store.shiftOpen ? Icons.lock_outline : Icons.lock_open),
+                  label: Text(store.shiftOpen ? 'Cerrar caja' : 'Abrir caja')),
+              ]))),
+          const SizedBox(height: 12),
+        ],
         StatGrid(
           children: [
             StatCard(
@@ -1099,9 +1156,13 @@ class _AdminScreenState extends State<AdminScreen> {
           ...items.map(
             (item) => Card(
               child: ResponsiveListTile(
-                leading: CircleAvatar(
-                  backgroundColor: luxuryGold.withValues(alpha: .18),
-                  child: const Icon(Icons.restaurant, color: luxuryBrown),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: 54,
+                    height: 54,
+                    child: LuxuryDishArtwork(item: item, compact: true),
+                  ),
                 ),
                 title: Text(
                   item.name,
@@ -1860,6 +1921,13 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
+  String _auditAction(String value) => switch (value.toUpperCase()) {
+    'INSERT' => 'Registró',
+    'UPDATE' => 'Actualizó',
+    'DELETE' => 'Eliminó',
+    _ => value,
+  };
+
   Widget _auditPage() => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -1878,7 +1946,7 @@ class _AdminScreenState extends State<AdminScreen> {
             child: ResponsiveListTile(
               leading: const Icon(Icons.history),
               title: Text(
-                '${entry.action} · ${entry.entity} #${entry.entityId}',
+                '${_auditAction(entry.action)} · ${entry.entity} #${entry.entityId}',
               ),
               subtitle: Text(
                 '${entry.actorName} · ${entry.actorRole} · ${entry.createdAt.toLocal()}',
