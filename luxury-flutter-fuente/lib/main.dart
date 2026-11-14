@@ -319,8 +319,10 @@ class _LoginScreenState extends State<_LoginScreen> {
       await store.signIn(normalizedEmail, password.text);
     } catch (exception) {
       if (mounted) {
-        setState(() => error =
-          'No fue posible iniciar sesión. Verifica tus datos e inténtalo nuevamente.');
+        setState(
+          () => error =
+              'No fue posible iniciar sesión. Verifica tus datos e inténtalo nuevamente.',
+        );
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -637,9 +639,11 @@ class _LoginScreenState extends State<_LoginScreen> {
           const Padding(
             padding: EdgeInsets.only(top: 12),
             child: Center(
-              child: Text('Para recuperar tu acceso, comunícate con el administrador.',
+              child: Text(
+                'Para recuperar tu acceso, comunícate con el administrador.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: Colors.white70)),
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
             ),
           ),
         ] else ...[
