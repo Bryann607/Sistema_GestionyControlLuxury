@@ -41,7 +41,10 @@ class _WaiterScreenState extends State<WaiterScreen> {
   void _onNavigationChange() {
     final value = widget.navigationController?.value;
     if (value != null && value != _page && mounted) {
-      setState(() => _page = value);
+      setState(() {
+        if (value == 1) _clearOrderSelection();
+        _page = value;
+      });
     }
   }
 
@@ -80,6 +83,41 @@ class _WaiterScreenState extends State<WaiterScreen> {
       store.tables.where((table) => table.id == selectedTableId).firstOrNull;
   double get cartTotal =>
       cart.values.fold(0, (sum, line) => sum + line.item.price * line.quantity);
+
+  void _clearOrderSelection() {
+    selectedTableId = null;
+    editingOrder = null;
+    additionalParentId = null;
+    cart.clear();
+  }
+
+  void _startNewOrder() {
+    setState(() {
+      _clearOrderSelection();
+      page = 1;
+    });
+  }
+
+  Future<void> _selectTableForOrder(RestaurantTable table) async {
+    final hasUnsettledOrder = store.orders.any(
+      (order) =>
+          order.tableId == table.id &&
+          order.status != OrderStatus.paid &&
+          order.status != OrderStatus.cancelled,
+    );
+    if (hasUnsettledOrder) {
+      await _tableActions(table);
+    } else {
+      _openOrder(table);
+    }
+  }
+
+  void _selectPage(int value) {
+    setState(() {
+      if (value == 1) _clearOrderSelection();
+      page = value;
+    });
+  }
 
   bool _running = false;
 
@@ -178,6 +216,20 @@ class _WaiterScreenState extends State<WaiterScreen> {
           order.status != OrderStatus.paid &&
           order.status != OrderStatus.cancelled &&
           order.status != OrderStatus.delivered,
+    ).toList();
+    final ordersAvailableForAdditionalItems = store.orders.where(
+      (order) =>
+          order.tableId == table.id &&
+          order.balance > .001 &&
+          order.status != OrderStatus.forPayment &&
+          order.status != OrderStatus.paid &&
+          order.status != OrderStatus.cancelled,
+    ).toList();
+    final hasUnsettledOrder = store.orders.any(
+      (order) =>
+          order.tableId == table.id &&
+          order.status != OrderStatus.paid &&
+          order.status != OrderStatus.cancelled,
     );
     final settledOrders = store.orders
         .where(
@@ -187,9 +239,6 @@ class _WaiterScreenState extends State<WaiterScreen> {
                   order.status == OrderStatus.cancelled) &&
               !order.retirementConfirmed,
         )
-        .toList();
-    final paidOrders = settledOrders
-        .where((order) => order.status == OrderStatus.paid)
         .toList();
     final canRelease =
         settledOrders.isNotEmpty &&
@@ -221,14 +270,31 @@ class _WaiterScreenState extends State<WaiterScreen> {
                   '${table.capacity} personas · ${table.status.label}',
                 ),
               ),
-              ResponsiveListTile(
-                leading: const Icon(Icons.add_shopping_cart),
-                title: const Text('Nuevo pedido'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openOrder(table);
-                },
-              ),
+              if (!hasUnsettledOrder)
+                ResponsiveListTile(
+                  leading: const Icon(Icons.add_shopping_cart),
+                  title: const Text('Nuevo pedido'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openOrder(table);
+                  },
+                ),
+              if (ordersAvailableForAdditionalItems.isNotEmpty)
+                ResponsiveListTile(
+                  leading: const Icon(Icons.playlist_add),
+                  title: const Text('Agregar productos a cocina'),
+                  subtitle: Text(
+                    'Se enviarán en una comanda nueva para el pedido '
+                    '#${ordersAvailableForAdditionalItems.last.id}',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openOrder(
+                      table,
+                      parentOrder: ordersAvailableForAdditionalItems.last,
+                    );
+                  },
+                ),
               if (activeOrders.isNotEmpty)
                 ResponsiveListTile(
                   leading: const Icon(Icons.receipt_long),
@@ -236,16 +302,6 @@ class _WaiterScreenState extends State<WaiterScreen> {
                   onTap: () {
                     Navigator.pop(context);
                     setState(() => page = 2);
-                  },
-                ),
-              if (paidOrders.isNotEmpty)
-                ResponsiveListTile(
-                  leading: const Icon(Icons.add_shopping_cart),
-                  title: const Text('Agregar consumo adicional'),
-                  subtitle: Text('Vinculado al pedido #${paidOrders.last.id}'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openOrder(table, parentOrder: paidOrders.last);
                   },
                 ),
               if (canRelease)
@@ -271,7 +327,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
     // action at the very top and reachable without scrolling.
     final shortViewport = MediaQuery.sizeOf(context).height < 500;
     final newOrderButton = FilledButton.icon(
-      onPressed: tables.isEmpty ? null : () => _openOrder(tables.first),
+      onPressed: tables.isEmpty ? null : _startNewOrder,
       icon: const Icon(Icons.add),
       label: const Text('Nuevo pedido'),
     );
@@ -396,12 +452,25 @@ class _WaiterScreenState extends State<WaiterScreen> {
   Widget _newOrder() {
     final table = selectedTable;
     if (table == null) {
-      return Center(
-        child: FilledButton.icon(
-          onPressed: () => setState(() => page = 0),
-          icon: const Icon(Icons.table_restaurant),
-          label: const Text('Elegir mesa'),
-        ),
+      final tables = store.tables.where((value) => value.active).toList();
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          const SectionTitle(
+            title: 'Nuevo pedido',
+            subtitle: 'Selecciona la mesa antes de registrar productos.',
+          ),
+          ...tables.map(
+            (table) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.table_restaurant),
+                title: Text('Mesa ${table.number}'),
+                subtitle: Text(table.status.label),
+                onTap: () => _selectTableForOrder(table),
+              ),
+            ),
+          ),
+        ],
       );
     }
     final categories = ['Todas', ...store.categories];
@@ -428,7 +497,9 @@ class _WaiterScreenState extends State<WaiterScreen> {
                           ? 'Consumo adicional'
                           : 'Nueva comanda'} · Mesa ${table.number}',
                   subtitle: editingOrder != null
-                      ? 'Solo se puede editar antes de que cocina inicie la preparación'
+                      ? 'Solo se edita antes de iniciar la preparación. Los agregados se envían como una comanda nueva a cocina.'
+                      : additionalParentId != null
+                      ? 'Los productos se enviarán como una nueva comanda a cocina.'
                       : 'Elige los platos y agrega observaciones especiales',
                   trailing: IconButton(
                     tooltip: 'Volver a mesas',
@@ -773,15 +844,16 @@ class _WaiterScreenState extends State<WaiterScreen> {
                             label: const Text('Cancelar pedido'),
                           ),
                         ],
-                        if (order.status == OrderStatus.ready)
+                        if (kitchenStage(order) == OrderStatus.ready &&
+                            order.status != OrderStatus.paid)
                           FilledButton.tonalIcon(
                             onPressed: () =>
                                 _run(() => store.advanceOrder(order)),
                             icon: const Icon(Icons.done_all),
                             label: const Text('Confirmar entrega'),
                           ),
-                        if (order.status == OrderStatus.ready ||
-                            order.status == OrderStatus.delivered)
+                        if (order.balance > .001 &&
+                            order.status != OrderStatus.forPayment)
                           OutlinedButton.icon(
                             onPressed: () =>
                                 _run(() => store.setOrderForPayment(order)),
@@ -815,11 +887,11 @@ class _WaiterScreenState extends State<WaiterScreen> {
                                   .where((value) => value.id == order.tableId)
                                   .firstOrNull;
                               if (table != null) {
-                                _openOrder(table, parentOrder: order);
+                                _openOrder(table);
                               }
                             },
                             icon: const Icon(Icons.add_shopping_cart),
-                            label: const Text('Consumo adicional'),
+                            label: const Text('Nuevo pedido'),
                           ),
                         ],
                       ],
@@ -902,7 +974,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
   Widget _nav(bool compact) => NavigationRail(
     scrollable: true,
     selectedIndex: page,
-    onDestinationSelected: (value) => setState(() => page = value),
+    onDestinationSelected: _selectPage,
     extended: !compact,
     labelType: compact ? NavigationRailLabelType.all : null,
     destinations: List.generate(
@@ -933,7 +1005,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
             ? NavigationBar(
                 height: MediaQuery.sizeOf(context).height < 500 ? 64 : 80,
                 selectedIndex: page,
-                onDestinationSelected: (value) => setState(() => page = value),
+                onDestinationSelected: _selectPage,
                 destinations: List.generate(
                   _labels.length,
                   (index) => NavigationDestination(

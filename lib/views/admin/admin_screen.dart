@@ -858,26 +858,103 @@ class _AdminScreenState extends State<AdminScreen> {
   );
 
   Future<void> _manageCashShift() async {
-    final opening = !store.shiftOpen;
-    final amount = TextEditingController(text: opening ? '0.00' :
-        store.openingCash.toStringAsFixed(2));
-    final counted = await showDialog<double>(context: context,
-      builder: (dialog) => AlertDialog(
-        title: Text(opening ? 'Abrir caja del día' : 'Cerrar caja del día'),
-        content: TextField(controller: amount,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: opening
-            ? 'Fondo inicial' : 'Efectivo contado al cierre', prefixText: 'S/ ')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialog),
-            child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(dialog,
-            double.tryParse(amount.text.replaceAll(',', '.'))),
-            child: const Text('Confirmar')),
-        ],
-      ));
+    final cashiers = store.staff
+        .where((member) => member.active && member.role == StaffRole.cashier)
+        .toList();
+    if (cashiers.isEmpty) {
+      LuxuryFeedback.error(context, 'No hay cajeros activos para asignar el turno.');
+      return;
+    }
+    final amount = TextEditingController(text: '0.00');
+    final initialShift = store.cashShifts.firstOrNull;
+    var selectedCashierId =
+        initialShift?['cajero_id'] as String? ?? cashiers.first.id;
+    final result = await showDialog<(String, double, bool)>(
+      context: context,
+      builder: (dialog) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final shift = store.cashShifts
+              .where((entry) => entry['cajero_id'] == selectedCashierId)
+              .firstOrNull;
+          final opening = shift == null && !store.isDemo
+              ? true
+              : shift == null
+              ? !store.shiftOpen
+              : false;
+          return AlertDialog(
+            title: Text(opening ? 'Abrir turno de caja' : 'Cerrar turno de caja'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: selectedCashierId,
+                  decoration: const InputDecoration(labelText: 'Cajero'),
+                  items: cashiers
+                      .map(
+                        (cashier) => DropdownMenuItem(
+                          value: cashier.id,
+                          child: Text(cashier.name),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setDialogState(() => selectedCashierId = value);
+                    amount.text = '0.00';
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amount,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: opening
+                        ? 'Fondo inicial'
+                        : 'Efectivo contado al cierre',
+                    prefixText: 'S/ ',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialog),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final value = double.tryParse(
+                    amount.text.replaceAll(',', '.'),
+                  );
+                  if (value != null) {
+                    Navigator.pop(
+                      dialog,
+                      (selectedCashierId, value, opening),
+                    );
+                  }
+                },
+                child: const Text('Confirmar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
     amount.dispose();
-    if (counted != null) await _run(() => store.setShiftOpen(opening, countedCash: counted));
+    if (result == null) return;
+    final selectedShift = store.cashShifts
+        .where((entry) => entry['cajero_id'] == result.$1)
+        .firstOrNull;
+    await _run(
+      () => store.setShiftOpen(
+        result.$3,
+        countedCash: result.$2,
+        cashierId: result.$1,
+        shiftId: selectedShift?['id'] as int?,
+      ),
+    );
   }
 
   Widget _dashboard() {

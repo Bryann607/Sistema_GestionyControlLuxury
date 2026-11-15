@@ -10,6 +10,23 @@ import 'package:luxury_app/models/models.dart';
 import 'package:luxury_app/services/receipt_pdf.dart';
 import 'package:luxury_app/widgets/widgets.dart';
 
+class _PaymentDraft {
+  _PaymentDraft(double amount)
+      : amount = TextEditingController(text: amount.toStringAsFixed(2)),
+        received = TextEditingController(text: amount.toStringAsFixed(2));
+
+  String method = 'Efectivo';
+  final TextEditingController amount;
+  final TextEditingController reference = TextEditingController();
+  final TextEditingController received;
+
+  void dispose() {
+    amount.dispose();
+    reference.dispose();
+    received.dispose();
+  }
+}
+
 class CashierScreen extends StatefulWidget {
   const CashierScreen({super.key, required this.store, this.navigationController});
   final RestaurantStore store;
@@ -82,175 +99,271 @@ class _CashierScreenState extends State<CashierScreen> {
   Future<void> _collect(RestaurantOrder order) async {
     if (!store.shiftOpen) {
       setState(() => page = 2);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Abre el turno de caja antes de registrar pagos.'),
-        ),
+      LuxuryFeedback.error(
+        context,
+        'Administración debe abrir el turno de caja asignado a este cajero.',
       );
       return;
     }
-    final amount = TextEditingController(
-      text: order.balance.toStringAsFixed(2),
-    );
-    final reference = TextEditingController();
-    final received = TextEditingController(
-      text: order.balance.toStringAsFixed(2),
-    );
-    var selectedMethod = 'Efectivo';
+    final parts = <_PaymentDraft>[_PaymentDraft(order.balance)];
     final requiresEarlyConfirmation =
         kitchenStage(order) == OrderStatus.pending ||
         kitchenStage(order) == OrderStatus.preparing;
     var earlyPaymentConfirmed = !requiresEarlyConfirmation;
-    final result = await showDialog<(String, String, String, String, bool)>(
+    final result = await showDialog<
+        ({List<(String, String, String, String)> payments, bool earlyConfirmed})>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Cobrar · Pedido #${order.id}'),
-          content: SizedBox(
-            width: 380,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Total ${money(order.total)} · Pagado ${money(order.paid)}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                if (requiresEarlyConfirmation) ...[
-                  const SizedBox(height: 8),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: earlyPaymentConfirmed,
-                    onChanged: (value) => setDialogState(
-                      () => earlyPaymentConfirmed = value ?? false,
+        builder: (context, setDialogState) {
+          final allocated = parts.fold<double>(
+            0,
+            (sum, part) => sum + (double.tryParse(part.amount.text) ?? 0),
+          );
+          String? validationError() {
+            for (final part in parts) {
+              final partAmount = double.tryParse(part.amount.text);
+              if (partAmount == null ||
+                  !partAmount.isFinite ||
+                  partAmount <= 0) {
+                return 'Cada forma de pago debe tener un monto válido.';
+              }
+              if (part.method == 'Efectivo') {
+                final cashReceived = double.tryParse(part.received.text);
+                if (cashReceived == null ||
+                    !cashReceived.isFinite ||
+                    cashReceived < partAmount) {
+                  return 'El efectivo recibido debe cubrir su monto.';
+                }
+              } else if (part.reference.text.trim().isEmpty) {
+                return 'Registra la referencia de cada pago digital o con tarjeta.';
+              }
+            }
+            if (allocated > order.balance + .001) {
+              return 'Los pagos no pueden superar el saldo pendiente.';
+            }
+            return null;
+          }
+
+          final error = validationError();
+          return AlertDialog(
+            title: Text('Cobrar · Pedido #${order.id}'),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total de la cuenta: ${money(order.total)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    title: const Text(
-                      'El cliente solicita pagar antes de terminar la preparación',
+                    Text(
+                      'Pagado: ${money(order.paid)} · Saldo: ${money(order.balance)}',
                     ),
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
-                ],
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedMethod,
-                  decoration: const InputDecoration(
-                    labelText: 'Método de pago',
-                  ),
-                  items:
-                      const [
-                            'Efectivo',
-                            'Yape',
-                            'Plin',
-                            'Yape / Plin',
-                            'Tarjeta',
-                          ]
-                          .map(
-                            (value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(value),
-                            ),
-                          )
-                          .toList(),
-                  onChanged: (value) => setDialogState(
-                    () => selectedMethod = value ?? selectedMethod,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amount,
-                  autofocus: true,
-                  onChanged: (_) => setDialogState(() {}),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Monto',
-                    prefixText: 'S/ ',
-                    helperText: 'Saldo pendiente ${money(order.balance)}',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (selectedMethod == 'Efectivo')
-                  TextField(
-                    controller: received,
-                    onChanged: (_) => setDialogState(() {}),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Efectivo recibido',
-                      prefixText: 'S/ ',
-                    ),
-                  )
-                else
-                  TextField(
-                    controller: reference,
-                    decoration: const InputDecoration(
-                      labelText: 'N.º de operación / referencia',
-                    ),
-                  ),
-                if (selectedMethod == 'Efectivo') ...[
-                  const SizedBox(height: 8),
-                  Builder(
-                    builder: (context) {
-                      final paidAmount = double.tryParse(amount.text) ?? 0;
-                      final cashAmount = double.tryParse(received.text) ?? 0;
-                      final change = (cashAmount - paidAmount)
+                    const SizedBox(height: 12),
+                    if (requiresEarlyConfirmation)
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: earlyPaymentConfirmed,
+                        onChanged: (value) => setDialogState(
+                          () => earlyPaymentConfirmed = value ?? false,
+                        ),
+                        title: const Text(
+                          'Confirmo el pago antes de terminar la preparación',
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ...List.generate(parts.length, (index) {
+                      final part = parts[index];
+                      final partAmount = double.tryParse(part.amount.text) ?? 0;
+                      final cashReceived =
+                          double.tryParse(part.received.text) ?? 0;
+                      final change = (cashReceived - partAmount)
                           .clamp(0, double.infinity)
                           .toDouble();
-                      return Text('Vuelto: ${money(change)}');
-                    },
-                  ),
-                ],
-              ],
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Forma de pago ${index + 1}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  if (parts.length > 1)
+                                    IconButton(
+                                      tooltip: 'Quitar forma de pago',
+                                      onPressed: () => setDialogState(
+                                        () => parts.removeAt(index).dispose(),
+                                      ),
+                                      icon: const Icon(Icons.delete_outline),
+                                    ),
+                                ],
+                              ),
+                              DropdownButtonFormField<String>(
+                                initialValue: part.method,
+                                decoration: const InputDecoration(
+                                  labelText: 'Método de pago',
+                                ),
+                                items: const [
+                                  'Efectivo',
+                                  'Yape',
+                                  'Plin',
+                                  'Yape / Plin',
+                                  'Tarjeta',
+                                ]
+                                    .map(
+                                      (value) => DropdownMenuItem(
+                                        value: value,
+                                        child: Text(value),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (value) => setDialogState(
+                                  () => part.method = value ?? part.method,
+                                ),
+                              ),
+                              TextField(
+                                controller: part.amount,
+                                autofocus: index == 0,
+                                onChanged: (_) => setDialogState(() {}),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Monto de esta forma de pago',
+                                  prefixText: 'S/ ',
+                                ),
+                              ),
+                              if (part.method == 'Efectivo') ...[
+                                TextField(
+                                  controller: part.received,
+                                  onChanged: (_) => setDialogState(() {}),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Efectivo recibido',
+                                    prefixText: 'S/ ',
+                                  ),
+                                ),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text('Vuelto: ${money(change)}'),
+                                ),
+                              ] else
+                                TextField(
+                                  controller: part.reference,
+                                  decoration: const InputDecoration(
+                                    labelText: 'N.º de operación / referencia',
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    TextButton.icon(
+                      onPressed: () => setDialogState(() {
+                        final remaining = (order.balance - allocated)
+                            .clamp(0, order.balance)
+                            .toDouble();
+                        parts.add(_PaymentDraft(remaining));
+                      }),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Agregar otra forma de pago'),
+                    ),
+                    Text(
+                      'Asignado: ${money(allocated)} de ${money(order.balance)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    if (error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          error,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: earlyPaymentConfirmed
-                  ? () => Navigator.pop(context, (
-                      selectedMethod,
-                      amount.text,
-                      reference.text,
-                      received.text,
-                      earlyPaymentConfirmed,
-                    ))
-                  : null,
-              child: const Text('Registrar abono'),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: error != null ||
+                        (requiresEarlyConfirmation &&
+                            !earlyPaymentConfirmed)
+                    ? null
+                    : () => Navigator.pop(
+                        context,
+                        (
+                          payments: parts
+                              .map(
+                                (part) => (
+                                  part.method,
+                                  part.amount.text,
+                                  part.reference.text,
+                                  part.received.text,
+                                ),
+                              )
+                              .toList(),
+                          earlyConfirmed: earlyPaymentConfirmed,
+                        ),
+                      ),
+                child: const Text('Registrar pago'),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (result != null) {
       await _run(() async {
-        final value = double.tryParse(result.$2);
-        if (value == null) throw StateError('Escribe un monto válido.');
-        final receivedAmount = result.$1 == 'Efectivo'
-            ? double.tryParse(result.$4)
-            : null;
-        await store.recordPayment(
-          order: order,
-          method: result.$1,
-          amount: value,
-          reference: result.$3,
-          cashReceived: receivedAmount,
-          earlyPaymentConfirmed: result.$5,
-        );
+        var amountPaid = 0.0;
+        for (final payment in result.payments) {
+          final value = double.parse(payment.$2);
+          final receivedAmount = payment.$1 == 'Efectivo'
+              ? double.parse(payment.$4)
+              : null;
+          final currentOrder = store.orders
+              .where((current) => current.id == order.id)
+              .firstOrNull;
+          await store.recordPayment(
+            order: currentOrder ?? order,
+            method: payment.$1,
+            amount: value,
+            reference: payment.$3,
+            cashReceived: receivedAmount,
+            earlyPaymentConfirmed: result.earlyConfirmed,
+          );
+          amountPaid += value;
+        }
         if (mounted) {
           await LuxuryFeedback.success(context,
             title: 'Pago registrado',
-            message: 'El abono de S/ ${value.toStringAsFixed(2)} se registró correctamente.');
+            message: 'El pago de S/ ${amountPaid.toStringAsFixed(2)} se registró correctamente.');
         }
       });
     }
-    amount.dispose();
-    reference.dispose();
-    received.dispose();
+    for (final part in parts) {
+      part.dispose();
+    }
   }
 
   Widget _accounts() {

@@ -42,6 +42,7 @@ class RestaurantStore extends ChangeNotifier {
   bool shiftOpen = false;
   double openingCash = 0;
   double closedCash = 0;
+  final List<Map<String, dynamic>> cashShifts = [];
   bool get isConnected => _client != null;
   bool get isDemo => !isConnected;
   SupabaseClient? get client => _client;
@@ -540,13 +541,26 @@ class RestaurantStore extends ChangeNotifier {
                 .order('creado_en', ascending: false)
                 .limit(200)
           : empty,
-      canReadShifts
-          ? client
-                .from('turnos_caja')
-                .select()
-                .order('abierto_en', ascending: false)
-                .limit(1)
-          : empty,
+      if (!canReadShifts)
+        empty
+      else if (role == StaffRole.cashier)
+        () async {
+          final response = await client.rpc('obtener_turno_caja_actual');
+          if (response == null) return <Map<String, dynamic>>[];
+          if (response is List) {
+            return response
+                .map((row) => Map<String, dynamic>.from(row as Map))
+                .toList();
+          }
+          throw StateError('La respuesta del turno de caja no es válida.');
+        }()
+      else
+        client
+            .from('turnos_caja')
+            .select()
+            .isFilter('cerrado_en', null)
+            .order('abierto_en', ascending: false)
+            .limit(50),
     ];
     // Se esperan todas las consultas y, si alguna falla, se informa el error de la
     // primera de la lista (resultado determinista, sin depender del orden de llegada).
@@ -821,9 +835,12 @@ class RestaurantStore extends ChangeNotifier {
           ),
         ),
       );
+    cashShifts
+      ..clear()
+      ..addAll(remoteShifts);
     if (remoteShifts.isNotEmpty) {
       final openShift = remoteShifts.first;
-      shiftOpen = openShift['cerrado_en'] == null;
+      shiftOpen = true;
       openingCash = (openShift['monto_apertura'] as num).toDouble();
       closedCash = (openShift['monto_cierre'] as num?)?.toDouble() ?? 0;
     } else if (role == StaffRole.cashier || role == StaffRole.administrator) {
@@ -1079,17 +1096,19 @@ class RestaurantStore extends ChangeNotifier {
             orders.any(
               (order) =>
                   order.tableId == table.id &&
-                  (order.status != OrderStatus.paid &&
-                          order.status != OrderStatus.cancelled ||
-                      !order.retirementConfirmed),
+                  order.status != OrderStatus.paid &&
+                  order.status != OrderStatus.cancelled,
             )) ||
         (parentOrderId != null &&
             (parent == null ||
                 parent.tableId != table.id ||
-                parent.status != OrderStatus.paid ||
+                parent.status == OrderStatus.forPayment ||
+                parent.status == OrderStatus.paid ||
+                parent.status == OrderStatus.cancelled ||
+                parent.payments.isNotEmpty ||
                 parent.retirementConfirmed))) {
       throw StateError(
-        'Los consumos posteriores al pago deben vincularse al pedido principal vigente.',
+        'Agrega los productos al pedido abierto de esta mesa. Después de pagar, crea un pedido nuevo.',
       );
     }
     if (_client != null) {
@@ -2138,51 +2157,42 @@ class RestaurantStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setShiftOpen(bool open, {double? countedCash}) async {
+  Future<void> setShiftOpen(
+    bool open, {
+    double? countedCash,
+    String? cashierId,
+    int? shiftId,
+  }) async {
     if (role != StaffRole.administrator) {
       throw StateError('Solo administración puede abrir o cerrar caja.');
     }
-    if (open == shiftOpen) return;
+    if (_client == null && open == shiftOpen) return;
     if (countedCash == null || !countedCash.isFinite || countedCash < 0) {
       throw StateError('El monto de caja debe ser un número igual o mayor a S/ 0.00.');
     }
     if (_client != null) {
-      if (open) {
-        final existing = await _client.from('turnos_caja')
-            .select('id').isFilter('cerrado_en', null).limit(1);
-        if (existing.isNotEmpty) {
-          throw StateError('Ya existe una caja abierta. Actualiza la pantalla.');
-        }
-        await _client.from('turnos_caja').insert({
-          'cajero_id': userId,
-          'monto_apertura': countedCash,
-        });
-      } else {
-        final shifts = await _client
-            .from('turnos_caja')
-            .select('id')
-            .isFilter('cerrado_en', null)
-            .order('abierto_en', ascending: false)
-            .limit(1);
-        if (shifts.isEmpty) {
-          throw StateError('No hay un turno abierto que pueda cerrarse.');
-        }
-        await _client
-            .from('turnos_caja')
-            .update({
-              'cerrado_en': DateTime.now().toIso8601String(),
-              'monto_cierre': countedCash,
-            })
-            .eq('id', shifts.first['id']);
+      if (cashierId == null || (!open && shiftId == null)) {
+        throw StateError('Selecciona el cajero y el turno que vas a gestionar.');
       }
-    }
-    shiftOpen = open;
-    if (open) {
-      openingCash = countedCash;
+      await _client.rpc(
+        'administrar_turno_caja',
+        params: {
+          'p_cajero_id': cashierId,
+          'p_abrir': open,
+          'p_monto': countedCash,
+          'p_turno_id': shiftId,
+        },
+      );
+      await _loadRemoteData();
     } else {
-      closedCash = countedCash;
+      shiftOpen = open;
+      if (open) {
+        openingCash = countedCash;
+      } else {
+        closedCash = countedCash;
+      }
+      await _persist();
     }
-    if (_client == null) await _persist();
     _recordLocalAudit(
       open ? 'Abrir turno de caja' : 'Cerrar turno de caja',
       'turnos_caja',

@@ -151,6 +151,8 @@ void main() {
           await tester.tap(find.widgetWithText(FilledButton, 'Nuevo pedido'));
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull, reason: 'Nueva comanda');
+          await tester.tap(find.text('Mesa ${store.tables.first.number}'));
+          await tester.pumpAndSettle();
           await tester.scrollUntilVisible(
             find.byKey(ValueKey('add-menu-item-${store.menu.first.id}')),
             100,
