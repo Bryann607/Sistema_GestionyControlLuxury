@@ -101,8 +101,7 @@ class _WorkScreenState extends State<WorkScreen> {
           enabled: false,
           height: 76,
           child: Row(children: [
-            const CircleAvatar(radius: 21, backgroundColor: Color(0xFFFFE3C2),
-              child: Icon(Icons.person_rounded, color: Color(0xFF805034))),
+            staffAvatar(store, store.currentStaffMember, radius: 21),
             const SizedBox(width: 12),
             Expanded(child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -138,8 +137,7 @@ class _WorkScreenState extends State<WorkScreen> {
           border: Border.all(color: Colors.white.withValues(alpha: .16)),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const CircleAvatar(radius: 14, backgroundColor: Color(0xFF805034),
-            child: Icon(Icons.person_rounded, color: Colors.white, size: 17)),
+          staffAvatar(store, store.currentStaffMember, radius: 14),
           if (!compact) ...[
             const SizedBox(width: 10),
             Flexible(child: Column(mainAxisSize: MainAxisSize.min,
@@ -250,12 +248,13 @@ class _WorkScreenState extends State<WorkScreen> {
                   onTap: () => _selectSection(context, i, compact),
                 )),
               const Divider(color: Color(0xFF76503B), height: 22),
-              if (role == StaffRole.cashier || role == StaffRole.administrator || role == StaffRole.manager || role == StaffRole.waiter || role == StaffRole.kitchen || role == StaffRole.headChef)
+              // Para llevar y delivery solo para quienes los registran (mesero y administración).
+              if (role == StaffRole.waiter || role == StaffRole.administrator)
               ListTile(
                 dense: true,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 leading: const Icon(Icons.delivery_dining_rounded, color: Color(0xFFFFC783)),
-                title: Text(role == StaffRole.waiter ? 'Pedidos para llevar' : (role == StaffRole.kitchen || role == StaffRole.headChef ? 'Comandas externas' : 'Delivery y para llevar'),
+                title: const Text('Para llevar y delivery',
                   style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
                 onTap: () {
                   if (compact) Navigator.of(context).pop();

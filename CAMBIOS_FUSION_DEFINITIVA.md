@@ -17,3 +17,10 @@ Base: **VersioNose** (diseño de login e interfaces intacto). Funciones tomadas 
 ## Pendiente / no portado
 - Cambio de contraseña obligatorio, cola de pedidos sin conexión y reportes avanzados de Luxury-SIG.
 - No se pudo compilar aquí (sin Flutter). Ejecutar: `flutter pub get && flutter analyze && flutter test`, luego `flutter run -d chrome --dart-define-from-file=config/supabase.public.json`.
+
+## Segunda ronda
+- **Perfil** (como Luxury-SIG): foto de perfil en Supabase Storage (`employee-profiles`) que se guarda al elegirla, y solo datos de contacto básicos vía `actualizar_perfil_propio`. La foto se muestra en el menú de cuenta.
+- **Fotos de platillos**: en Administración > Menú, el campo URL se reemplazó por «Subir foto» (galería, JPG/PNG/WebP, máx. 2 MB). Se sube al bucket `dish-photos` y la URL pública se guarda sola en `platillos.foto_url`. **Aplicar `supabase/migrations/20261112000000_Dish_photos_storage.sql` en Supabase** (y las migraciones de Luxury-SIG si aún no están).
+- **Pantallas de carga** en todas las operaciones de Administración, Caja, Cocina y Mesero (diálogo bloqueante, evita doble clic).
+- **Para llevar y delivery** solo para Mesero y Administrador (quienes pueden registrarlos en la base). Cocina y Caja los reciben en sus pantallas normales como «Delivery · cliente».
+- Pendiente: rediseño de la vista del mesero (plano de mesas con sillas) y flujo de consumos adicionales de Luxury-SIG.

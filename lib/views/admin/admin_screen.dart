@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:luxury_app/widgets/luxury_feedback.dart';
 import 'package:luxury_app/widgets/luxury_dish_artwork.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
+import 'package:luxury_app/widgets/luxury_progress.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
 
 import 'package:luxury_app/controllers/restaurant_store.dart';
@@ -263,13 +267,19 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
+  bool _running = false;
+
   Future<void> _run(Future<void> Function() action) async {
+    if (_running) return;
+    _running = true;
     try {
-      await action();
+      await showBlockingProgress<void>(context, action: action, label: 'Procesando…');
     } catch (error) {
       if (mounted) {
         LuxuryFeedback.error(context, LuxuryFeedback.message(error));
       }
+    } finally {
+      _running = false;
     }
   }
 
@@ -313,14 +323,47 @@ class _AdminScreenState extends State<AdminScreen> {
       text: item?.price.toStringAsFixed(2) ?? '',
     );
     final description = TextEditingController(text: item?.description ?? '');
-    final imageUrl = TextEditingController(text: item?.imageUrl ?? '');
     var selectedCategory =
         item?.category ??
         (store.categories.isEmpty ? 'Chifas' : store.categories.first);
-    final result = await showDialog<(String, String, String, String, String)>(
+    var currentPhoto = item?.imageUrl ?? '';
+    Uint8List? newPhoto;
+    var newPhotoExtension = '';
+    String? photoError;
+    final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          Future<void> pickPhoto() async {
+            try {
+              final picked = await ImagePicker().pickImage(
+                source: ImageSource.gallery,
+                maxWidth: 1400,
+                imageQuality: 85,
+              );
+              if (picked == null) return;
+              final bytes = await picked.readAsBytes();
+              final dot = picked.name.lastIndexOf('.');
+              final extension = dot < 0 ? '' : picked.name.substring(dot + 1);
+              if (bytes.length > 2 * 1024 * 1024) {
+                setDialogState(() => photoError = 'La foto debe pesar máximo 2 MB.');
+                return;
+              }
+              if (!['jpg', 'jpeg', 'png', 'webp'].contains(extension.toLowerCase())) {
+                setDialogState(() => photoError = 'Usa una foto JPG, PNG o WebP.');
+                return;
+              }
+              setDialogState(() {
+                newPhoto = bytes;
+                newPhotoExtension = extension;
+                photoError = null;
+              });
+            } catch (_) {
+              setDialogState(() => photoError = 'No se pudo abrir la galería.');
+            }
+          }
+
+          final hasPhoto = newPhoto != null || currentPhoto.isNotEmpty;
           return AlertDialog(
             title: Text(item == null ? 'Nuevo platillo' : 'Editar platillo'),
             content: SizedBox(
@@ -329,6 +372,54 @@ class _AdminScreenState extends State<AdminScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Container(
+                      height: 150,
+                      width: double.infinity,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1EADF),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: newPhoto != null
+                          ? Image.memory(newPhoto!, fit: BoxFit.cover)
+                          : currentPhoto.isNotEmpty
+                          ? Image.network(
+                              currentPhoto,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => const Center(
+                                child: Icon(Icons.broken_image_outlined),
+                              ),
+                            )
+                          : const Center(
+                              child: Icon(Icons.restaurant_menu, size: 40, color: Color(0xFFB59B7C)),
+                            ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        TextButton.icon(
+                          onPressed: store.isDemo ? null : pickPhoto,
+                          icon: const Icon(Icons.photo_camera_outlined),
+                          label: Text(hasPhoto ? 'Cambiar foto' : 'Subir foto'),
+                        ),
+                        if (hasPhoto)
+                          TextButton(
+                            onPressed: () => setDialogState(() {
+                              newPhoto = null;
+                              currentPhoto = '';
+                            }),
+                            child: const Text('Quitar'),
+                          ),
+                      ],
+                    ),
+                    if (store.isDemo)
+                      const Text(
+                        'Subir fotos requiere una cuenta conectada a Supabase.',
+                        style: TextStyle(fontSize: 12, color: Colors.black54),
+                      ),
+                    if (photoError != null)
+                      Text(photoError!, style: const TextStyle(color: Color(0xFFB3261E))),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: name,
                       decoration: const InputDecoration(labelText: 'Nombre'),
@@ -369,32 +460,17 @@ class _AdminScreenState extends State<AdminScreen> {
                         labelText: 'Descripción',
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: imageUrl,
-                      keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'URL de foto del platillo',
-                        hintText: 'https://ejemplo.com/platillo.jpg',
-                      ),
-                    ),
                   ],
                 ),
               ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(context, false),
                 child: const Text('Cancelar'),
               ),
               FilledButton(
-                onPressed: () => Navigator.pop(context, (
-                  name.text.trim(),
-                  selectedCategory,
-                  price.text.trim(),
-                  description.text.trim(),
-                  imageUrl.text.trim(),
-                )),
+                onPressed: () => Navigator.pop(context, true),
                 child: const Text('Guardar'),
               ),
             ],
@@ -402,26 +478,27 @@ class _AdminScreenState extends State<AdminScreen> {
         },
       ),
     );
-    if (result != null) {
+    if (accepted == true) {
       await _run(() async {
-        final value = double.tryParse(result.$3);
+        final value = double.tryParse(price.text.trim().replaceAll(',', '.'));
         if (value == null || value < 0) {
           throw StateError('Escribe un precio válido.');
         }
-        final photoUrl = result.$5;
-        final photoUri = Uri.tryParse(photoUrl);
-        if (photoUrl.isNotEmpty &&
-            (photoUri == null ||
-                !['http', 'https'].contains(photoUri.scheme) ||
-                photoUri.host.isEmpty)) {
-          throw StateError('La foto debe tener una URL http o https válida.');
+        // La foto se sube a Supabase Storage y se guarda sola junto al platillo.
+        var photoUrl = currentPhoto;
+        final bytes = newPhoto;
+        if (bytes != null) {
+          photoUrl = await store.uploadDishPhoto(
+            bytes: bytes,
+            extension: newPhotoExtension,
+          );
         }
         await store.saveMenuItem(
           id: item?.id,
-          name: result.$1,
-          category: result.$2,
+          name: name.text.trim(),
+          category: selectedCategory,
           price: value,
-          description: result.$4,
+          description: description.text.trim(),
           imageUrl: photoUrl,
         );
       });
@@ -429,7 +506,6 @@ class _AdminScreenState extends State<AdminScreen> {
     name.dispose();
     price.dispose();
     description.dispose();
-    imageUrl.dispose();
   }
 
   Future<void> _editCategory([String? oldName]) async {

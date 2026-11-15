@@ -1,6 +1,7 @@
 import 'package:luxury_app/widgets/luxury_feedback.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
+import 'package:luxury_app/widgets/luxury_progress.dart';
 
 import 'package:luxury_app/controllers/restaurant_store.dart';
 import 'package:luxury_app/core/theme/app_colors.dart';
@@ -62,13 +63,19 @@ class _KitchenScreenState extends State<KitchenScreen> {
   bool notesOnly = false;
   RestaurantStore get store => widget.store;
 
+  bool _running = false;
+
   Future<void> _run(Future<void> Function() action) async {
+    if (_running) return;
+    _running = true;
     try {
-      await action();
+      await showBlockingProgress<void>(context, action: action, label: 'Procesando…');
     } catch (error) {
       if (mounted) {
         LuxuryFeedback.error(context, LuxuryFeedback.message(error));
       }
+    } finally {
+      _running = false;
     }
   }
 

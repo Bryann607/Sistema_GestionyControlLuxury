@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'dart:convert';
 
+import 'dart:math' as math;
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -717,6 +720,14 @@ class RestaurantStore extends ChangeNotifier {
             email: row['correo'] as String? ?? '',
             role: StaffRole.fromDatabase(row['rol'] as String),
             active: row['activo'] as bool,
+            employmentStatus: row['estado_laboral'] as String? ??
+                ((row['activo'] as bool) ? 'ACTIVO' : 'INACTIVO'),
+            department: row['departamento'] as String? ?? '',
+            documentId: row['documento_identidad'] as String? ?? '',
+            personalEmail: row['correo_personal'] as String? ?? '',
+            phone: row['telefono'] as String? ?? '',
+            address: row['direccion'] as String? ?? '',
+            photoPath: row['foto_path'] as String? ?? '',
           ),
         ),
       );
@@ -875,6 +886,143 @@ class RestaurantStore extends ChangeNotifier {
           'No se pudo actualizar la información en tiempo real: $error';
       notifyListeners();
     }
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Perfil y fotos en Supabase Storage
+  // ---------------------------------------------------------------------------
+  int _photoVersion = DateTime.now().millisecondsSinceEpoch;
+
+  StaffMember? get currentStaffMember =>
+      staff.where((member) => member.id == userId).firstOrNull;
+
+  String get currentUserEmail =>
+      _client?.auth.currentUser?.email ?? currentStaffMember?.email ?? '';
+
+  /// URL pública de la foto de perfil (bucket `employee-profiles`).
+  String profilePhotoUrl(String path) {
+    final client = _client;
+    if (client == null || path.isEmpty) return '';
+    final url = client.storage.from('employee-profiles').getPublicUrl(path);
+    return '$url?v=$_photoVersion';
+  }
+
+  static String _imageContentType(String extension) =>
+      switch (extension.toLowerCase()) {
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        _ => throw StateError('Usa una foto JPG, PNG o WebP.'),
+      };
+
+  static void _checkImageSize(Uint8List bytes) {
+    if (bytes.isEmpty || bytes.length > 2 * 1024 * 1024) {
+      throw StateError('La foto debe tener un tamaño máximo de 2 MB.');
+    }
+  }
+
+  Future<void> updateOwnStaffProfile({
+    required String personalEmail,
+    required String phone,
+    required String address,
+    required String department,
+    String? photoPath,
+  }) async {
+    final client = _client;
+    if (client == null) {
+      throw StateError('El perfil requiere conexión con Supabase.');
+    }
+    final email = personalEmail.trim();
+    if (email.isNotEmpty &&
+        !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+      throw StateError('Indica un correo personal válido.');
+    }
+    final digits = phone.trim();
+    if (digits.isNotEmpty && !RegExp(r'^\d{9}$').hasMatch(digits)) {
+      throw StateError('El teléfono debe tener 9 dígitos.');
+    }
+    await client.rpc('actualizar_perfil_propio', params: {
+      'p_correo_personal': email,
+      'p_telefono': digits,
+      'p_direccion': address.trim(),
+      'p_departamento': department.trim(),
+      'p_foto_path': photoPath,
+    });
+    final id = userId;
+    if (id != null) {
+      final rows = await client.from('usuarios').select().eq('id', id).limit(1);
+      final row = rows.firstOrNull;
+      final index = staff.indexWhere((member) => member.id == id);
+      if (row != null && index >= 0) {
+        staff[index] = staff[index].copyWith(
+          personalEmail: row['correo_personal'] as String? ?? '',
+          phone: row['telefono'] as String? ?? '',
+          address: row['direccion'] as String? ?? '',
+          department: row['departamento'] as String? ?? '',
+          photoPath: row['foto_path'] as String? ?? '',
+        );
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Sube la foto de perfil a Storage y la guarda de inmediato en el perfil.
+  Future<void> uploadStaffPhoto({
+    required StaffMember member,
+    required Uint8List bytes,
+    required String extension,
+  }) async {
+    final client = _client;
+    if (client == null) {
+      throw StateError('La carga de fotos requiere conexión con Supabase.');
+    }
+    _checkImageSize(bytes);
+    final format = extension.toLowerCase();
+    final contentType = _imageContentType(format);
+    final path = '${member.id}/perfil.$format';
+    await client.storage.from('employee-profiles').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(upsert: true, contentType: contentType),
+    );
+    _photoVersion = DateTime.now().millisecondsSinceEpoch;
+    if (member.id == userId) {
+      await updateOwnStaffProfile(
+        personalEmail: member.personalEmail,
+        phone: member.phone,
+        address: member.address,
+        department: member.department,
+        photoPath: path,
+      );
+    } else {
+      await client.from('usuarios').update({'foto_path': path}).eq('id', member.id);
+      final index = staff.indexWhere((item) => item.id == member.id);
+      if (index >= 0) staff[index] = staff[index].copyWith(photoPath: path);
+      notifyListeners();
+    }
+  }
+
+  /// Sube la foto de un platillo al bucket `dish-photos` y devuelve su URL pública.
+  Future<String> uploadDishPhoto({
+    required Uint8List bytes,
+    required String extension,
+  }) async {
+    final client = _client;
+    if (client == null) {
+      throw StateError('La carga de fotos requiere conexión con Supabase.');
+    }
+    _checkImageSize(bytes);
+    final format = extension.toLowerCase();
+    final contentType = _imageContentType(format);
+    final path =
+        'platillos/${DateTime.now().millisecondsSinceEpoch}-${math.Random().nextInt(1 << 31)}.$format';
+    await client.storage.from('dish-photos').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(upsert: false, contentType: contentType),
+    );
+    return client.storage.from('dish-photos').getPublicUrl(path);
   }
 
   Future<void> refresh() async {

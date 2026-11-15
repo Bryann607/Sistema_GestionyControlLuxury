@@ -28,10 +28,9 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
   String? message;
   RestaurantStore get store => widget.store;
 
+  // La base solo permite registrar estos pedidos al mesero y al administrador.
   bool get _canManageDelivery =>
-      store.role == StaffRole.cashier ||
-      store.role == StaffRole.administrator ||
-      store.role == StaffRole.manager;
+      store.role == StaffRole.waiter || store.role == StaffRole.administrator;
 
   String _friendlyError(Object error) {
     if (error is PostgrestException) {
@@ -98,11 +97,7 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
   /// Los pedidos para llevar y delivery viven en `pedidos` (tipo_pedido) y
   /// llegan a Cocina y Caja por el flujo normal; aquí solo se listan.
   void _rebuildRemote() {
-    final rows = store.orders.where((order) => !order.isTableOrder).where(
-      (order) =>
-          store.role != StaffRole.waiter ||
-          order.fulfillmentType == 'PARA_LLEVAR',
-    );
+    final rows = store.orders.where((order) => !order.isTableOrder);
     _remote
       ..clear()
       ..addAll(rows.map((order) => {
@@ -146,12 +141,7 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
   }
 
   Future<void> _create() async {
-    if (store.role != StaffRole.waiter &&
-        store.role != StaffRole.cashier &&
-        store.role != StaffRole.administrator &&
-        store.role != StaffRole.manager) {
-      return;
-    }
+    if (!_canManageDelivery) return;
     final customer = TextEditingController();
     final phone = TextEditingController();
     final address = TextEditingController();
@@ -333,7 +323,6 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
     phone.dispose();
     address.dispose();
     if (result == null) return;
-    if (!_canManageDelivery && result['modalidad'] == 'DELIVERY') return;
     setState(() {
       _pending.add(result);
       message = null;
@@ -508,11 +497,7 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canCreate =
-        store.role == StaffRole.waiter ||
-        store.role == StaffRole.administrator ||
-        store.role == StaffRole.manager ||
-        store.role == StaffRole.cashier;
+    final canCreate = _canManageDelivery;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pedidos externos'),
