@@ -500,7 +500,7 @@ class RestaurantStore extends ChangeNotifier {
     final canReadShifts =
         role == StaffRole.cashier || role == StaffRole.administrator;
     // Las consultas independientes se cargan en paralelo (pantalla de carga más rápida).
-    final results = await Future.wait<List<Map<String, dynamic>>>([
+    final queries = <Future<List<Map<String, dynamic>>>>[
       client.from('mesas').select().eq('activa', true).order('numero'),
       client.from('categorias').select().eq('activa', true).order('orden'),
       client.from('platillos').select().eq('activo', true).order('nombre'),
@@ -544,7 +544,23 @@ class RestaurantStore extends ChangeNotifier {
                 .order('abierto_en', ascending: false)
                 .limit(1)
           : empty,
-    ], eagerError: true);
+    ];
+    // Se esperan todas las consultas y, si alguna falla, se informa el error de la
+    // primera de la lista (resultado determinista, sin depender del orden de llegada).
+    final settled = await Future.wait<Object>(
+      queries.map(
+        (query) => query.then<Object>(
+          (rows) => rows,
+          onError: (Object error, StackTrace stack) => _QueryFailure(error, stack),
+        ),
+      ),
+    );
+    for (final entry in settled) {
+      if (entry is _QueryFailure) {
+        Error.throwWithStackTrace(entry.error, entry.stack);
+      }
+    }
+    final results = settled.cast<List<Map<String, dynamic>>>();
     final remoteTables = results[0];
     final remoteCategories = results[1];
     final remoteMenu = results[2];
@@ -2232,4 +2248,10 @@ class RestaurantStore extends ChangeNotifier {
     unawaited(_realtime?.unsubscribe());
     super.dispose();
   }
+}
+
+class _QueryFailure {
+  const _QueryFailure(this.error, this.stack);
+  final Object error;
+  final StackTrace stack;
 }
