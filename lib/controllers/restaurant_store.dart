@@ -503,6 +503,9 @@ class RestaurantStore extends ChangeNotifier {
         role == StaffRole.manager || role == StaffRole.administrator;
     final canReadShifts =
         role == StaffRole.cashier || role == StaffRole.administrator;
+    final paymentColumns = role == StaffRole.cashier
+        ? 'pedido_id,metodo,monto,creado_en,referencia,efectivo_recibido'
+        : 'pedido_id,metodo,monto,creado_en,referencia';
     // Las consultas independientes se cargan en paralelo (pantalla de carga más rápida).
     final queries = <Future<List<Map<String, dynamic>>>>[
       client.from('mesas').select().eq('activa', true).order('numero'),
@@ -510,7 +513,7 @@ class RestaurantStore extends ChangeNotifier {
       client.from('platillos').select().eq('activo', true).order('nombre'),
       client.from('pedidos').select().order('creado_en', ascending: false),
       client.from('detalle_pedido').select().order('creado_en'),
-      client.from('pagos').select().order('creado_en'),
+      client.from('pagos').select(paymentColumns).order('creado_en'),
       client
           .from('insumos')
           .select('id,nombre,descripcion,unidad,stock_actual,stock_minimo,activo'),
@@ -1365,7 +1368,7 @@ class RestaurantStore extends ChangeNotifier {
           amount: amount,
           createdAt: DateTime.now(),
           reference: reference.trim(),
-          cashReceived: cashReceived,
+          cashReceived: role == StaffRole.cashier ? cashReceived : null,
         ),
       ];
       final complete =

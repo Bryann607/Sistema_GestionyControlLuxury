@@ -13,11 +13,19 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  OrderLine sampleLine({int menuItemId = 1, String name = 'Wantán frito'}) =>
-      OrderLine(menuItemId: menuItemId, name: name, quantity: 1, unitPrice: 18);
+  OrderLine sampleLine({
+    int menuItemId = 1,
+    String name = 'Wantán frito',
+    double unitPrice = 18,
+  }) => OrderLine(
+    menuItemId: menuItemId,
+    name: name,
+    quantity: 1,
+    unitPrice: unitPrice,
+  );
 
   test(
-    'La cuenta acepta pagos divididos y conserva el total del pedido',
+    'La cuenta acepta cobros sucesivos y conserva su total original',
     () async {
       final store = RestaurantStore();
       addTearDown(store.dispose);
@@ -135,40 +143,96 @@ void main() {
     expect(find.text('Solicitar cuenta'), findsOneWidget);
   });
 
-  testWidgets('Caja permite dividir el pago sin editar el total', (
-    tester,
-  ) async {
-    final store = RestaurantStore();
-    addTearDown(store.dispose);
-    await store.loginDemo(StaffRole.administrator);
-    await store.setShiftOpen(true, countedCash: 0);
-    store.orders.clear();
-    await store.createOrder(
-      table: store.tables.firstWhere((value) => value.id == 1),
-      diners: 1,
-      lines: [sampleLine()],
-    );
-    final order = store.orders.first;
-    await store.advanceOrder(order);
-    await store.advanceOrder(store.orders.first);
-    await store.advanceOrder(store.orders.first);
+  testWidgets(
+    'Caja cobra sucesivamente y calcula vuelto sin editar la cuenta',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = RestaurantStore();
+      addTearDown(store.dispose);
+      await store.loginDemo(StaffRole.administrator);
+      await store.setShiftOpen(true, countedCash: 0);
+      store.orders.clear();
+      await store.createOrder(
+        table: store.tables.firstWhere((value) => value.id == 1),
+        diners: 1,
+        lines: [sampleLine(unitPrice: 100)],
+      );
+      final order = store.orders.first;
+      await store.advanceOrder(order);
+      await store.advanceOrder(store.orders.first);
+      await store.advanceOrder(store.orders.first);
 
-    await tester.pumpWidget(MaterialApp(home: CashierScreen(store: store)));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(ExpansionTile));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.widgetWithText(FilledButton, 'Cobrar cuenta · S/ 18.00'),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(MaterialApp(home: CashierScreen(store: store)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(ExpansionTile));
+      await tester.pumpAndSettle();
+      final firstCharge = find.widgetWithText(
+        FilledButton,
+        'Cobrar cuenta · S/ 100.00',
+      );
+      await tester.ensureVisible(firstCharge);
+      await tester.tap(firstCharge);
+      await tester.pumpAndSettle();
 
-    expect(find.text('Total de la cuenta: S/ 18.00'), findsOneWidget);
-    expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
-    await tester.tap(find.text('Agregar otra forma de pago'));
-    await tester.pumpAndSettle();
-    expect(find.byType(DropdownButtonFormField<String>), findsNWidgets(2));
-    expect(tester.takeException(), isNull);
-  });
+      expect(
+        find.text('Total original de la cuenta: S/ 100.00'),
+        findsOneWidget,
+      );
+      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tarjeta').last);
+      await tester.pumpAndSettle();
+      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, '40');
+      await tester.enterText(find.byType(TextField).last, 'CARD-40');
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Registrar pago'),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.text('Registrar pago'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(store.orders.first.payments, hasLength(1));
+      expect(store.orders.first.payments.first.amount, 40);
+      expect(store.orders.first.balance, 60);
+      expect(find.text('Pago registrado'), findsOneWidget);
+      await tester.tap(find.text('Continuar'));
+      await tester.pumpAndSettle();
+
+      final nextCharge = find.widgetWithText(
+        FilledButton,
+        'Registrar siguiente abono · S/ 60.00',
+      );
+      await tester.ensureVisible(nextCharge);
+      await tester.tap(nextCharge);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Total original de la cuenta: S/ 100.00'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Pagado: S/ 40.00 · Saldo pendiente: S/ 60.00'),
+        findsOneWidget,
+      );
+      await tester.enterText(find.byType(TextField).last, '100');
+      await tester.pumpAndSettle();
+      expect(find.text('Vuelto para entregar: S/ 40.00'), findsOneWidget);
+      await tester.tap(find.text('Registrar pago'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(store.orders.first.balance, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('Nuevo pedido vuelve a pedir mesa y no conserva la anterior', (
     tester,

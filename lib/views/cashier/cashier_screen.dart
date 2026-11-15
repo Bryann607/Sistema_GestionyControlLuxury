@@ -10,25 +10,12 @@ import 'package:luxury_app/models/models.dart';
 import 'package:luxury_app/services/receipt_pdf.dart';
 import 'package:luxury_app/widgets/widgets.dart';
 
-class _PaymentDraft {
-  _PaymentDraft(double amount)
-      : amount = TextEditingController(text: amount.toStringAsFixed(2)),
-        received = TextEditingController(text: amount.toStringAsFixed(2));
-
-  String method = 'Efectivo';
-  final TextEditingController amount;
-  final TextEditingController reference = TextEditingController();
-  final TextEditingController received;
-
-  void dispose() {
-    amount.dispose();
-    reference.dispose();
-    received.dispose();
-  }
-}
-
 class CashierScreen extends StatefulWidget {
-  const CashierScreen({super.key, required this.store, this.navigationController});
+  const CashierScreen({
+    super.key,
+    required this.store,
+    this.navigationController,
+  });
   final RestaurantStore store;
   final ValueNotifier<int>? navigationController;
 
@@ -86,7 +73,11 @@ class _CashierScreenState extends State<CashierScreen> {
     if (_running) return;
     _running = true;
     try {
-      await showBlockingProgress<void>(context, action: action, label: 'Procesando…');
+      await showBlockingProgress<void>(
+        context,
+        action: action,
+        label: 'Procesando…',
+      );
     } catch (error) {
       if (mounted) {
         LuxuryFeedback.error(context, LuxuryFeedback.message(error));
@@ -105,41 +96,39 @@ class _CashierScreenState extends State<CashierScreen> {
       );
       return;
     }
-    final parts = <_PaymentDraft>[_PaymentDraft(order.balance)];
+    final amount = TextEditingController(
+      text: order.balance.toStringAsFixed(2),
+    );
+    final received = TextEditingController(
+      text: order.balance.toStringAsFixed(2),
+    );
+    final reference = TextEditingController();
+    var selectedMethod = 'Efectivo';
     final requiresEarlyConfirmation =
         kitchenStage(order) == OrderStatus.pending ||
         kitchenStage(order) == OrderStatus.preparing;
     var earlyPaymentConfirmed = !requiresEarlyConfirmation;
-    final result = await showDialog<
-        ({List<(String, String, String, String)> payments, bool earlyConfirmed})>(
+    final result = await showDialog<(String, String, String, String, bool)>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final allocated = parts.fold<double>(
-            0,
-            (sum, part) => sum + (double.tryParse(part.amount.text) ?? 0),
-          );
           String? validationError() {
-            for (final part in parts) {
-              final partAmount = double.tryParse(part.amount.text);
-              if (partAmount == null ||
-                  !partAmount.isFinite ||
-                  partAmount <= 0) {
-                return 'Cada forma de pago debe tener un monto válido.';
-              }
-              if (part.method == 'Efectivo') {
-                final cashReceived = double.tryParse(part.received.text);
-                if (cashReceived == null ||
-                    !cashReceived.isFinite ||
-                    cashReceived < partAmount) {
-                  return 'El efectivo recibido debe cubrir su monto.';
-                }
-              } else if (part.reference.text.trim().isEmpty) {
-                return 'Registra la referencia de cada pago digital o con tarjeta.';
-              }
+            final paymentAmount = double.tryParse(amount.text);
+            if (paymentAmount == null ||
+                !paymentAmount.isFinite ||
+                paymentAmount <= 0 ||
+                paymentAmount > order.balance + .001) {
+              return 'El monto debe ser mayor a cero y no superar el saldo pendiente.';
             }
-            if (allocated > order.balance + .001) {
-              return 'Los pagos no pueden superar el saldo pendiente.';
+            if (selectedMethod == 'Efectivo') {
+              final cashReceived = double.tryParse(received.text);
+              if (cashReceived == null ||
+                  !cashReceived.isFinite ||
+                  cashReceived < paymentAmount) {
+                return 'El efectivo recibido debe cubrir el monto de este cobro.';
+              }
+            } else if (reference.text.trim().isEmpty) {
+              return 'Registra el número de operación o la referencia del pago.';
             }
             return null;
           }
@@ -155,11 +144,11 @@ class _CashierScreenState extends State<CashierScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Total de la cuenta: ${money(order.total)}',
+                      'Total original de la cuenta: ${money(order.total)}',
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                     Text(
-                      'Pagado: ${money(order.paid)} · Saldo: ${money(order.balance)}',
+                      'Pagado: ${money(order.paid)} · Saldo pendiente: ${money(order.balance)}',
                     ),
                     const SizedBox(height: 12),
                     if (requiresEarlyConfirmation)
@@ -174,118 +163,69 @@ class _CashierScreenState extends State<CashierScreen> {
                         ),
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
-                    ...List.generate(parts.length, (index) {
-                      final part = parts[index];
-                      final partAmount = double.tryParse(part.amount.text) ?? 0;
-                      final cashReceived =
-                          double.tryParse(part.received.text) ?? 0;
-                      final change = (cashReceived - partAmount)
-                          .clamp(0, double.infinity)
-                          .toDouble();
-                      return Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Forma de pago ${index + 1}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                  if (parts.length > 1)
-                                    IconButton(
-                                      tooltip: 'Quitar forma de pago',
-                                      onPressed: () => setDialogState(
-                                        () => parts.removeAt(index).dispose(),
-                                      ),
-                                      icon: const Icon(Icons.delete_outline),
-                                    ),
-                                ],
-                              ),
-                              DropdownButtonFormField<String>(
-                                initialValue: part.method,
-                                decoration: const InputDecoration(
-                                  labelText: 'Método de pago',
-                                ),
-                                items: const [
-                                  'Efectivo',
-                                  'Yape',
-                                  'Plin',
-                                  'Yape / Plin',
-                                  'Tarjeta',
-                                ]
-                                    .map(
-                                      (value) => DropdownMenuItem(
-                                        value: value,
-                                        child: Text(value),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (value) => setDialogState(
-                                  () => part.method = value ?? part.method,
-                                ),
-                              ),
-                              TextField(
-                                controller: part.amount,
-                                autofocus: index == 0,
-                                onChanged: (_) => setDialogState(() {}),
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
-                                decoration: const InputDecoration(
-                                  labelText: 'Monto de esta forma de pago',
-                                  prefixText: 'S/ ',
-                                ),
-                              ),
-                              if (part.method == 'Efectivo') ...[
-                                TextField(
-                                  controller: part.received,
-                                  onChanged: (_) => setDialogState(() {}),
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Efectivo recibido',
-                                    prefixText: 'S/ ',
-                                  ),
-                                ),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text('Vuelto: ${money(change)}'),
-                                ),
-                              ] else
-                                TextField(
-                                  controller: part.reference,
-                                  decoration: const InputDecoration(
-                                    labelText: 'N.º de operación / referencia',
-                                  ),
-                                ),
-                            ],
-                          ),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedMethod,
+                      decoration: const InputDecoration(
+                        labelText: 'Método de pago de esta operación',
+                      ),
+                      items: const ['Efectivo', 'Yape', 'Plin', 'Tarjeta']
+                          .map(
+                            (value) => DropdownMenuItem(
+                              value: value,
+                              child: Text(value),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setDialogState(
+                        () => selectedMethod = value ?? selectedMethod,
+                      ),
+                    ),
+                    TextField(
+                      controller: amount,
+                      autofocus: true,
+                      onChanged: (_) => setDialogState(() {}),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Monto de este cobro',
+                        prefixText: 'S/ ',
+                        helperText:
+                            'Saldo restante máximo ${money(order.balance)}',
+                      ),
+                    ),
+                    if (selectedMethod == 'Efectivo') ...[
+                      TextField(
+                        controller: received,
+                        onChanged: (_) => setDialogState(() {}),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
                         ),
-                      );
-                    }),
-                    TextButton.icon(
-                      onPressed: () => setDialogState(() {
-                        final remaining = (order.balance - allocated)
-                            .clamp(0, order.balance)
-                            .toDouble();
-                        parts.add(_PaymentDraft(remaining));
-                      }),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Agregar otra forma de pago'),
-                    ),
-                    Text(
-                      'Asignado: ${money(allocated)} de ${money(order.balance)}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                        decoration: const InputDecoration(
+                          labelText: 'Efectivo recibido',
+                          prefixText: 'S/ ',
+                        ),
+                      ),
+                      Builder(
+                        builder: (context) {
+                          final paymentAmount =
+                              double.tryParse(amount.text) ?? 0;
+                          final cashReceived =
+                              double.tryParse(received.text) ?? 0;
+                          final change = (cashReceived - paymentAmount)
+                              .clamp(0, double.infinity)
+                              .toDouble();
+                          return Text('Vuelto para entregar: ${money(change)}');
+                        },
+                      ),
+                    ] else
+                      TextField(
+                        controller: reference,
+                        onChanged: (_) => setDialogState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'N.º de operación / referencia',
+                        ),
+                      ),
                     if (error != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
@@ -306,26 +246,17 @@ class _CashierScreenState extends State<CashierScreen> {
                 child: const Text('Cancelar'),
               ),
               FilledButton(
-                onPressed: error != null ||
-                        (requiresEarlyConfirmation &&
-                            !earlyPaymentConfirmed)
+                onPressed:
+                    error != null ||
+                        (requiresEarlyConfirmation && !earlyPaymentConfirmed)
                     ? null
-                    : () => Navigator.pop(
-                        context,
-                        (
-                          payments: parts
-                              .map(
-                                (part) => (
-                                  part.method,
-                                  part.amount.text,
-                                  part.reference.text,
-                                  part.received.text,
-                                ),
-                              )
-                              .toList(),
-                          earlyConfirmed: earlyPaymentConfirmed,
-                        ),
-                      ),
+                    : () => Navigator.pop(context, (
+                        selectedMethod,
+                        amount.text,
+                        reference.text,
+                        received.text,
+                        earlyPaymentConfirmed,
+                      )),
                 child: const Text('Registrar pago'),
               ),
             ],
@@ -335,35 +266,36 @@ class _CashierScreenState extends State<CashierScreen> {
     );
     if (result != null) {
       await _run(() async {
-        var amountPaid = 0.0;
-        for (final payment in result.payments) {
-          final value = double.parse(payment.$2);
-          final receivedAmount = payment.$1 == 'Efectivo'
-              ? double.parse(payment.$4)
-              : null;
-          final currentOrder = store.orders
-              .where((current) => current.id == order.id)
-              .firstOrNull;
-          await store.recordPayment(
-            order: currentOrder ?? order,
-            method: payment.$1,
-            amount: value,
-            reference: payment.$3,
-            cashReceived: receivedAmount,
-            earlyPaymentConfirmed: result.earlyConfirmed,
-          );
-          amountPaid += value;
-        }
+        final value = double.parse(result.$2);
+        final receivedAmount = result.$1 == 'Efectivo'
+            ? double.parse(result.$4)
+            : null;
+        await store.recordPayment(
+          order: order,
+          method: result.$1,
+          amount: value,
+          reference: result.$3,
+          cashReceived: receivedAmount,
+          earlyPaymentConfirmed: result.$5,
+        );
+        final change = receivedAmount == null
+            ? 0
+            : (receivedAmount - value).clamp(0, double.infinity).toDouble();
+        if (mounted) setState(() {});
         if (mounted) {
-          await LuxuryFeedback.success(context,
+          await LuxuryFeedback.success(
+            context,
             title: 'Pago registrado',
-            message: 'El pago de S/ ${amountPaid.toStringAsFixed(2)} se registró correctamente.');
+            message: result.$1 == 'Efectivo' && change > 0
+                ? 'Se registró el abono de ${money(value)}. Entrega el vuelto de ${money(change)}.'
+                : 'Se registró el abono de ${money(value)} correctamente.',
+          );
         }
       });
     }
-    for (final part in parts) {
-      part.dispose();
-    }
+    amount.dispose();
+    received.dispose();
+    reference.dispose();
   }
 
   Widget _accounts() {
@@ -378,12 +310,16 @@ class _CashierScreenState extends State<CashierScreen> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const LuxuryBanner(eyebrow: 'Cobros y servicio', title: 'Caja y precuentas',
+        const LuxuryBanner(
+          eyebrow: 'Cobros y servicio',
+          title: 'Caja y precuentas',
           description: 'Consulta cada consumo antes de registrar un pago.',
-          icon: Icons.receipt_long_rounded),
+          icon: Icons.receipt_long_rounded,
+        ),
         SectionTitle(
           title: 'Cuentas y cobros',
-          subtitle: 'Admite abonos y pagos mixtos por pedido',
+          subtitle:
+              'Registra cada operación por separado hasta completar el saldo',
         ),
         if (active.isEmpty)
           const EmptyState(
@@ -396,7 +332,9 @@ class _CashierScreenState extends State<CashierScreen> {
               child: ExpansionTile(
                 leading: CircleAvatar(
                   backgroundColor: luxuryGold.withValues(alpha: .14),
-                  child: order.isTableOrder ? Text('${order.tableNumber}') : const Icon(Icons.delivery_dining, size: 20),
+                  child: order.isTableOrder
+                      ? Text('${order.tableNumber}')
+                      : const Icon(Icons.delivery_dining, size: 20),
                 ),
                 title: Text('${order.placeLabel} · Pedido #${order.id}'),
                 subtitle: Text(
@@ -442,7 +380,9 @@ class _CashierScreenState extends State<CashierScreen> {
                     child: OutlinedButton.icon(
                       onPressed: () => _run(() => printPreBillPdf(order)),
                       icon: const Icon(Icons.receipt_long_outlined),
-                      label: const Text('Ver / imprimir precuenta (sin cobrar)'),
+                      label: const Text(
+                        'Ver / imprimir precuenta (sin cobrar)',
+                      ),
                     ),
                   ),
                   Padding(
@@ -563,15 +503,20 @@ class _CashierScreenState extends State<CashierScreen> {
     final today = DateTime.now();
     bool isToday(DateTime date) {
       final local = date.toLocal();
-      return local.year == today.year && local.month == today.month &&
+      return local.year == today.year &&
+          local.month == today.month &&
           local.day == today.day;
     }
+
     final paymentsToday = store.orders
         .expand((order) => order.payments)
         .where((payment) => isToday(payment.createdAt));
     final collected = paymentsToday.fold<double>(
-      0, (sum, payment) => sum + payment.amount);
-    final cash = paymentsToday.where((payment) => payment.method == 'Efectivo')
+      0,
+      (sum, payment) => sum + payment.amount,
+    );
+    final cash = paymentsToday
+        .where((payment) => payment.method == 'Efectivo')
         .fold<double>(0, (sum, payment) => sum + payment.amount);
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -630,13 +575,12 @@ class _CashierScreenState extends State<CashierScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton.icon(
-                    onPressed: null, // Solo administración debe abrir y cerrar caja.
+                    onPressed:
+                        null, // Solo administración debe abrir y cerrar caja.
                     icon: Icon(
                       store.shiftOpen ? Icons.lock_outline : Icons.lock_open,
                     ),
-                    label: Text(
-                      'Apertura y cierre: administrador',
-                    ),
+                    label: Text('Apertura y cierre: administrador'),
                   ),
                 ),
               ],
