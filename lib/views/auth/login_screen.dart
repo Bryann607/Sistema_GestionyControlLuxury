@@ -1,5 +1,6 @@
 import 'package:luxury_app/widgets/luxury_ingredient_backdrop.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:luxury_app/controllers/restaurant_store.dart';
 import 'package:luxury_app/models/models.dart';
@@ -34,6 +35,24 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  String _loginErrorMessage(Object exception) {
+    if (exception is AuthException) {
+      final text = exception.message.toLowerCase();
+      if (text.contains('invalid login') || text.contains('invalid credentials')) {
+        return 'Correo o contraseña incorrectos.';
+      }
+      if (text.contains('confirm')) {
+        return 'El correo de esta cuenta aún no está confirmado.';
+      }
+      return 'No se pudo verificar la cuenta: ${exception.message}';
+    }
+    if (exception is StateError) return exception.message.toString();
+    if (exception is PostgrestException) {
+      return 'La cuenta es válida, pero no se pudieron cargar los datos del sistema (${exception.message}).';
+    }
+    return 'La cuenta es válida, pero ocurrió un error al cargar los datos: $exception';
+  }
+
   Future<void> _signIn() async {
     setState(() {
       busy = true;
@@ -41,11 +60,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       await store.signIn(email.text.trim(), password.text);
-    } catch (_) {
-      if (mounted) {
-        setState(() => error =
-          'No fue posible iniciar sesión. Verifica tus datos e inténtalo nuevamente.');
-      }
+    } catch (exception) {
+      if (mounted) setState(() => error = _loginErrorMessage(exception));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -264,6 +280,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text('Para recuperar tu acceso, comunícate con el administrador.',
                   style: TextStyle(color: Color(0xFFBEC0C4), fontSize: 12, height: 1.5)),
                 const SizedBox(height: 27),
+                if (busy) ...[
+                  const LinearProgressIndicator(
+                    color: Color(0xFFE39A35),
+                    backgroundColor: Color(0xFF3A3A40),
+                    minHeight: 4,
+                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(

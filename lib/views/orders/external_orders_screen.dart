@@ -39,8 +39,8 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
           error.code == 'PGRST205' ||
           (error.code == 'PGRST116' &&
               error.message.toLowerCase().contains('schema cache'))) {
-        return 'El módulo Delivery aún no está habilitado en Supabase. '
-            'El administrador técnico debe ejecutar la migración de pedidos externos.';
+        return 'El módulo de pedidos para llevar y delivery no está disponible en Supabase. '
+            'Verifica que la migración Delivery_takeaway esté aplicada.';
       }
       if (error.code == '42501' ||
           error.code == 'PGRST301' ||
@@ -84,23 +84,65 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
     await prefs.setString(_draftKey, jsonEncode(_pending));
   }
 
+  String _stageName(RestaurantOrder order) {
+    if (order.status == OrderStatus.cancelled) return 'CANCELADO';
+    if (order.status == OrderStatus.paid) return 'ENTREGADO';
+    return switch (kitchenStage(order)) {
+      OrderStatus.pending => 'PENDIENTE',
+      OrderStatus.preparing => 'PREPARANDO',
+      OrderStatus.ready => 'LISTO',
+      _ => 'ENTREGADO',
+    };
+  }
+
+  /// Los pedidos para llevar y delivery viven en `pedidos` (tipo_pedido) y
+  /// llegan a Cocina y Caja por el flujo normal; aquí solo se listan.
+  void _rebuildRemote() {
+    final rows = store.orders.where((order) => !order.isTableOrder).where(
+      (order) =>
+          store.role != StaffRole.waiter ||
+          order.fulfillmentType == 'PARA_LLEVAR',
+    );
+    _remote
+      ..clear()
+      ..addAll(rows.map((order) => {
+        'id': order.id,
+        'order': order,
+        'modalidad': order.fulfillmentType,
+        'cliente': order.customerName,
+        'telefono': order.customerPhone,
+        'direccion': order.deliveryAddress,
+        'items': [
+          for (final line in order.lines)
+            {'cantidad': line.quantity, 'nombre': line.name},
+        ],
+        'total': order.total,
+        'estado': _stageName(order),
+        'creado_en': order.createdAt.toIso8601String(),
+      }));
+  }
+
   Future<void> _refresh() async {
-    final client = store.client;
-    if (client != null) {
+    if (store.client != null) {
       try {
-        final query = client.from('pedidos_externos').select();
-        final rows = await (store.role == StaffRole.waiter
-            ? query.eq('modalidad', 'PARA_LLEVAR')
-            : query).order('creado_en', ascending: false).limit(150);
-        _remote
-          ..clear()
-          ..addAll(rows.map((row) => Map<String, dynamic>.from(row)));
+        await store.refresh();
         message = null;
       } catch (error) {
         message = _friendlyError(error);
       }
     }
+    _rebuildRemote();
     if (mounted) setState(() {});
+  }
+
+  String _newRequestId() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-'
+        '${hex.substring(16, 20)}-${hex.substring(20)}';
   }
 
   Future<void> _create() async {
@@ -269,8 +311,7 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
                     };
                   }).toList();
                   Navigator.pop(dialog, {
-                    'id':
-                        '${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(999999)}',
+                    'id': _newRequestId(),
                     'modalidad': type,
                     'cliente': customer.text.trim(),
                     'telefono': phone.text.trim(),
@@ -317,25 +358,31 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
     if (busy) return;
     setState(() => busy = true);
     try {
-      // Upsert con clave primaria fija: reintentos no generan pedidos duplicados.
+      // El identificador del borrador se reutiliza como solicitud: un reintento
+      // no genera pedidos duplicados.
       for (final draft in List<Map<String, dynamic>>.from(_pending)) {
-        try {
-          await client.from('pedidos_externos').insert(draft);
-        } catch (error) {
-          // Sólo considera sincronizado un intento repetido cuando se puede
-          // verificar que el servidor ya recibió exactamente ese identificador.
-          final existing = await client
-              .from('pedidos_externos')
-              .select('id,cliente,telefono,modalidad')
-              .eq('id', draft['id'])
-              .maybeSingle();
-          if (existing == null ||
-              existing['cliente'] != draft['cliente'] ||
-              existing['telefono'] != draft['telefono'] ||
-              existing['modalidad'] != draft['modalidad']) {
-            rethrow;
-          }
-        }
+        final isDelivery = draft['modalidad'] == 'DELIVERY';
+        await client.rpc(
+          'crear_pedido_sincronizado',
+          params: {
+            'p_solicitud_id': draft['id'],
+            'p_mesa_id': null,
+            'p_comensales': 1,
+            'p_pedido_padre_id': null,
+            'p_tipo_pedido': draft['modalidad'],
+            'p_cliente_nombre': draft['cliente'],
+            'p_cliente_telefono': draft['telefono'],
+            'p_direccion_entrega': isDelivery ? draft['direccion'] : null,
+            'p_items': [
+              for (final item in (draft['items'] as List<dynamic>))
+                {
+                  'platillo_id': item['platillo_id'],
+                  'cantidad': item['cantidad'],
+                  'observaciones': '',
+                },
+            ],
+          },
+        );
         _pending.removeWhere((item) => item['id'] == draft['id']);
         await _saveDrafts();
       }
@@ -357,10 +404,7 @@ class _ExternalOrdersScreenState extends State<ExternalOrdersScreen> {
     if (busy || store.client == null) return;
     setState(() => busy = true);
     try {
-      await store.client!.rpc(
-        'actualizar_estado_pedido_externo',
-        params: {'p_id': order['id'], 'p_estado': next},
-      );
+      await store.advanceOrder(order['order'] as RestaurantOrder);
       await _refresh();
       if (mounted) {
         await LuxuryFeedback.success(context, title: 'Estado actualizado',

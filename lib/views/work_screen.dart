@@ -8,6 +8,7 @@ import 'package:luxury_app/views/kitchen/kitchen_screen.dart';
 import 'package:luxury_app/views/waiter/waiter_screen.dart';
 import 'package:luxury_app/views/orders/external_orders_screen.dart';
 import 'package:luxury_app/widgets/luxury_profile_dialog.dart';
+import 'package:luxury_app/widgets/luxury_progress.dart';
 
 class WorkScreen extends StatefulWidget {
   const WorkScreen({super.key, required this.store});
@@ -49,12 +50,109 @@ class _WorkScreenState extends State<WorkScreen> {
     }
   }
 
-  Future<void> _showProfile(BuildContext context, bool compact) async {
-    final navigatorContext = Navigator.of(context, rootNavigator: true).context;
-    if (compact) Navigator.of(context).pop();
-    await showDialog<void>(
-      context: navigatorContext,
-      builder: (_) => LuxuryProfileDialog(store: store),
+  Future<void> _refreshInformation(BuildContext context) =>
+      runLuxuryOperation(context, store.refresh, label: 'Actualizando información…');
+
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Cerrar sesión'),
+        content: const Text('¿Deseas salir de tu cuenta en Luxury?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Cerrar sesión')),
+        ],
+      ),
+    );
+    if (confirm != true || !context.mounted) return;
+    await runLuxuryOperation(context, store.signOut, label: 'Cerrando sesión…');
+  }
+
+  /// Menú desplegable de cuenta (perfil, actualizar, cerrar sesión).
+  Widget _accountMenu(BuildContext context, {required bool compact, required bool dark}) {
+    final role = store.role!;
+    return PopupMenuButton<String>(
+      tooltip: 'Cuenta de ${store.displayName}',
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 8),
+      constraints: const BoxConstraints(minWidth: 260, maxWidth: 320),
+      color: const Color(0xFFFFFEFB),
+      elevation: 14,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE7DED0)),
+      ),
+      onSelected: (value) {
+        switch (value) {
+          case 'profile':
+            unawaited(showDialog<void>(context: context, builder: (_) => LuxuryProfileDialog(store: store)));
+          case 'refresh':
+            unawaited(_refreshInformation(context));
+          case 'reset':
+            unawaited(_resetDemo(context));
+          case 'logout':
+            unawaited(_confirmSignOut(context));
+        }
+      },
+      itemBuilder: (menuContext) => [
+        PopupMenuItem<String>(
+          enabled: false,
+          height: 76,
+          child: Row(children: [
+            const CircleAvatar(radius: 21, backgroundColor: Color(0xFFFFE3C2),
+              child: Icon(Icons.person_rounded, color: Color(0xFF805034))),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(store.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF261603))),
+                Text('${role.label} · ${store.isConnected ? 'Conectado' : 'Demostración'}',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF7A6B5A))),
+              ],
+            )),
+          ]),
+        ),
+        const PopupMenuDivider(height: 10),
+        const PopupMenuItem<String>(value: 'profile', height: 46,
+          child: _MenuEntry(icon: Icons.badge_outlined, label: 'Mi perfil')),
+        if (store.isConnected)
+          const PopupMenuItem<String>(value: 'refresh', height: 46,
+            child: _MenuEntry(icon: Icons.sync_rounded, label: 'Actualizar información')),
+        if (store.isDemo)
+          const PopupMenuItem<String>(value: 'reset', height: 46,
+            child: _MenuEntry(icon: Icons.restart_alt_rounded, label: 'Reiniciar demostración')),
+        const PopupMenuDivider(height: 10),
+        const PopupMenuItem<String>(value: 'logout', height: 46,
+          child: _MenuEntry(icon: Icons.logout_rounded, label: 'Cerrar sesión', destructive: true)),
+      ],
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: dark ? const Color(0xFF60362C) : Colors.white.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: .16)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const CircleAvatar(radius: 14, backgroundColor: Color(0xFF805034),
+            child: Icon(Icons.person_rounded, color: Colors.white, size: 17)),
+          if (!compact) ...[
+            const SizedBox(width: 10),
+            Flexible(child: Column(mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(store.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+              Text(role.label, style: const TextStyle(color: Color(0xFFE8B58F), fontSize: 11)),
+            ])),
+          ],
+          const SizedBox(width: 4),
+          const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white70, size: 20),
+        ]),
+      ),
     );
   }
 
@@ -169,36 +267,10 @@ class _WorkScreenState extends State<WorkScreen> {
           ),
         )),
         const Divider(color: Color(0xFF76503B), height: 1),
-        ListTile(
-          contentPadding: const EdgeInsets.fromLTRB(14, 8, 10, 4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          leading: const CircleAvatar(radius: 19, backgroundColor: Color(0xFF805034),
-            child: Icon(Icons.person_rounded, color: Colors.white, size: 20)),
-          title: Text(store.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-          subtitle: Text('${role.label} · Ver perfil',
-            style: const TextStyle(color: Color(0xFFE8B58F), fontSize: 12)),
-          trailing: const Icon(Icons.chevron_right, color: Colors.white70),
-          onTap: () => _showProfile(context, compact),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
+          child: _accountMenu(context, compact: false, dark: true),
         ),
-        if (store.isDemo) ListTile(
-          dense: true,
-          leading: const Icon(Icons.restart_alt, color: Colors.white70),
-          title: const Text('Reiniciar demostración', style: TextStyle(color: Colors.white70, fontSize: 13)),
-          onTap: () {
-            if (compact) Navigator.of(context).pop();
-            unawaited(_resetDemo(context));
-          },
-        ),
-        Padding(padding: const EdgeInsets.fromLTRB(10, 2, 10, 12), child: ListTile(
-          dense: true,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          tileColor: const Color(0xFF60362C),
-          leading: const Icon(Icons.logout_rounded, color: Color(0xFFFFB58A)),
-          title: const Text('Cerrar sesión', style: TextStyle(
-            color: Color(0xFFFFD1B4), fontSize: 13, fontWeight: FontWeight.w800)),
-          onTap: () => unawaited(store.signOut()),
-        )),
       ])),
     );
   }
@@ -221,11 +293,32 @@ class _WorkScreenState extends State<WorkScreen> {
       appBar: compact ? AppBar(
         title: Text('LUXURY  ·  ${role.label}',
           style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+        actions: [
+          Padding(padding: const EdgeInsets.only(right: 8),
+            child: _accountMenu(context, compact: true, dark: false)),
+        ],
       ) : null,
       body: Row(children: [
         if (!compact) _sidebar(context, compact: false),
         Expanded(child: content),
       ]),
     );
+  }
+}
+
+class _MenuEntry extends StatelessWidget {
+  const _MenuEntry({required this.icon, required this.label, this.destructive = false});
+  final IconData icon;
+  final String label;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = destructive ? const Color(0xFFB3261E) : const Color(0xFF261603);
+    return Row(children: [
+      Icon(icon, size: 20, color: color),
+      const SizedBox(width: 12),
+      Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+    ]);
   }
 }

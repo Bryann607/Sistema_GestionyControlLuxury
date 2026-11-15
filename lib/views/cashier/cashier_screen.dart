@@ -276,9 +276,9 @@ class _CashierScreenState extends State<CashierScreen> {
               child: ExpansionTile(
                 leading: CircleAvatar(
                   backgroundColor: luxuryGold.withValues(alpha: .14),
-                  child: Text('${order.tableNumber}'),
+                  child: order.isTableOrder ? Text('${order.tableNumber}') : const Icon(Icons.delivery_dining, size: 20),
                 ),
-                title: Text('Mesa ${order.tableNumber} · Pedido #${order.id}'),
+                title: Text('${order.placeLabel} · Pedido #${order.id}'),
                 subtitle: Text(
                   '${order.lines.length} productos · Total ${money(order.total)}',
                 ),
@@ -406,7 +406,7 @@ class _CashierScreenState extends State<CashierScreen> {
                     leading: const Icon(Icons.receipt_long),
                     title: Text('Nota de venta · Pedido #${order.id}'),
                     subtitle: Text(
-                      'Mesa ${order.tableNumber} · ${order.payments.map((payment) => payment.method).toSet().join(', ')}',
+                      '${order.placeLabel} · ${order.payments.map((payment) => payment.method).toSet().join(', ')}',
                     ),
                     trailing: Text(
                       money(order.total),
@@ -551,7 +551,7 @@ class _CashierScreenState extends State<CashierScreen> {
                       ? luxuryGreen
                       : luxuryBrown,
                 ),
-                title: Text('Pedido #${order.id} · Mesa ${order.tableNumber}'),
+                title: Text('Pedido #${order.id} · ${order.placeLabel}'),
                 subtitle: Text(
                   order.payments.isEmpty
                       ? 'Sin pagos registrados'

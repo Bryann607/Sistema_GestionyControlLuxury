@@ -42,7 +42,7 @@ Future<void> printReceiptPdf({
             ),
           ),
           pw.SizedBox(height: 8),
-          pw.Text('Mesa ${order.tableNumber} · Pedido #${order.id}'),
+          pw.Text('${order.placeLabel} · Pedido #${order.id}'),
           pw.Text(order.createdAt.toLocal().toString()),
           pw.Divider(),
           ...order.lines.map(
@@ -139,7 +139,7 @@ Future<void> printPreBillPdf(RestaurantOrder order) async {
         style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16))),
       pw.Center(child: pw.Text('Documento informativo · NO PAGADO')),
       pw.SizedBox(height: 8),
-      pw.Text('Mesa ${order.tableNumber} · Pedido #${order.id}'),
+      pw.Text('${order.placeLabel} · Pedido #${order.id}'),
       pw.Divider(),
       ...order.lines.map((line) => pw.Row(children: [
         pw.Expanded(child: pw.Text('${line.quantity} x ${line.name}')),

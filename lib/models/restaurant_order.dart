@@ -16,6 +16,10 @@ class RestaurantOrder {
     this.incident = '',
     this.parentOrderId,
     this.retirementConfirmed = false,
+    this.fulfillmentType = 'MESA',
+    this.customerName = '',
+    this.customerPhone = '',
+    this.deliveryAddress = '',
   });
 
   final int id;
@@ -30,6 +34,18 @@ class RestaurantOrder {
   final String incident;
   final int? parentOrderId;
   final bool retirementConfirmed;
+  /// 'MESA', 'PARA_LLEVAR' o 'DELIVERY'.
+  final String fulfillmentType;
+  final String customerName;
+  final String customerPhone;
+  final String deliveryAddress;
+
+  bool get isTableOrder => fulfillmentType == 'MESA';
+  String get placeLabel => switch (fulfillmentType) {
+    'DELIVERY' => 'Delivery${customerName.isEmpty ? '' : ' · $customerName'}',
+    'PARA_LLEVAR' => 'Para llevar${customerName.isEmpty ? '' : ' · $customerName'}',
+    _ => 'Mesa $tableNumber',
+  };
 
   double get total => lines.fold(0, (sum, line) => sum + line.subtotal);
   double get paid => payments.fold(0, (sum, payment) => sum + payment.amount);
@@ -58,6 +74,10 @@ class RestaurantOrder {
     incident: incident ?? this.incident,
     parentOrderId: parentOrderId ?? this.parentOrderId,
     retirementConfirmed: retirementConfirmed ?? this.retirementConfirmed,
+    fulfillmentType: fulfillmentType,
+    customerName: customerName,
+    customerPhone: customerPhone,
+    deliveryAddress: deliveryAddress,
   );
 
   Map<String, dynamic> toJson() => {
@@ -73,13 +93,17 @@ class RestaurantOrder {
     'incident': incident,
     'parentOrderId': parentOrderId,
     'retirementConfirmed': retirementConfirmed,
+    'fulfillmentType': fulfillmentType,
+    'customerName': customerName,
+    'customerPhone': customerPhone,
+    'deliveryAddress': deliveryAddress,
   };
 
   factory RestaurantOrder.fromJson(
     Map<String, dynamic> json,
   ) => RestaurantOrder(
     id: json['id'] as int,
-    tableId: json['tableId'] as int,
+    tableId: json['tableId'] as int? ?? 0,
     tableNumber: json['tableNumber'] as int,
     createdAt: DateTime.parse(json['createdAt'] as String),
     diners: json['diners'] as int? ?? 1,
@@ -99,6 +123,10 @@ class RestaurantOrder {
     incident: json['incident'] as String? ?? '',
     parentOrderId: json['parentOrderId'] as int?,
     retirementConfirmed: json['retirementConfirmed'] as bool? ?? false,
+    fulfillmentType: json['fulfillmentType'] as String? ?? 'MESA',
+    customerName: json['customerName'] as String? ?? '',
+    customerPhone: json['customerPhone'] as String? ?? '',
+    deliveryAddress: json['deliveryAddress'] as String? ?? '',
   );
 }
 

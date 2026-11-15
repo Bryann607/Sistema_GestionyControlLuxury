@@ -1909,7 +1909,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   Icons.report_problem_outlined,
                   color: luxuryRed,
                 ),
-                title: Text('Pedido #${order.id} · Mesa ${order.tableNumber}'),
+                title: Text('Pedido #${order.id} · ${order.placeLabel}'),
                 subtitle: Text(
                   '${order.incident}\n${order.createdAt.toLocal()} · ${order.status.label}',
                 ),

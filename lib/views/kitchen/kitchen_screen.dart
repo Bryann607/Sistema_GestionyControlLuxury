@@ -247,7 +247,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
       final hasNotes =
           !notesOnly || order.lines.any((line) => line.note.isNotEmpty);
       final text =
-          'mesa ${order.tableNumber} ${order.id} ${order.lines.map((line) => line.name).join(' ')}'
+          '${order.placeLabel.toLowerCase()} ${order.id} ${order.lines.map((line) => line.name).join(' ')}'
               .toLowerCase();
       return hasNotes && text.contains(query);
     }).toList();
@@ -447,7 +447,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'Mesa ${order.tableNumber} · #${order.id}',
+                    '${order.placeLabel} · #${order.id}',
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
@@ -661,7 +661,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
             (order) => Card(
               child: ResponsiveListTile(
                 leading: const Icon(Icons.done_all),
-                title: Text('Mesa ${order.tableNumber} · #${order.id}'),
+                title: Text('${order.placeLabel} · #${order.id}'),
                 subtitle: Text(
                   order.lines
                       .map((line) => '${line.quantity}× ${line.name}')

@@ -724,9 +724,9 @@ class _WaiterScreenState extends State<WaiterScreen> {
               child: ExpansionTile(
                 leading: CircleAvatar(
                   backgroundColor: luxuryGold.withValues(alpha: .14),
-                  child: Text('${order.tableNumber}'),
+                  child: order.isTableOrder ? Text('${order.tableNumber}') : const Icon(Icons.delivery_dining, size: 20),
                 ),
-                title: Text('Pedido #${order.id} · Mesa ${order.tableNumber}'),
+                title: Text('Pedido #${order.id} · ${order.placeLabel}'),
                 subtitle: Text(
                   '${order.lines.fold<int>(0, (sum, line) => sum + line.quantity)} productos · ${money(order.total)}',
                 ),

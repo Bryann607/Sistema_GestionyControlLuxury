@@ -31,6 +31,32 @@
 
   <title>Luxury · Restaurante Oriental</title>
   <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2a0f0d">
+  <style>
+    body { margin: 0; background: #141519; }
+    #luxury-startup {
+      position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+      padding: 24px; background: #2a0f0d; color: #f5f0eb;
+      font: 16px system-ui, sans-serif; text-align: center;
+    }
+    #luxury-startup strong { letter-spacing: .2em; font-size: 24px; }
+    #luxury-startup .load-line {
+      height: 4px; margin: 18px auto 0; width: 190px; border-radius: 4px;
+      overflow: hidden; background: #634133;
+    }
+    #luxury-startup .load-line::before {
+      content: ''; height: 100%; width: 42%; display: block;
+      background: #e48424; border-radius: inherit;
+      animation: luxury-loading 1.25s ease-in-out infinite alternate;
+    }
+    #luxury-startup button {
+      border: 0; border-radius: 8px; background: #e48424; color: #2a0f0d;
+      padding: 10px 16px; font: inherit; cursor: pointer;
+    }
+    #luxury-startup.failed .load-line { display: none; }
+    @keyframes luxury-loading { to { transform: translateX(140%); } }
+    @media (prefers-reduced-motion: reduce) { #luxury-startup .load-line::before { animation: none; } }
+  </style>
 </head>
 <body>
   <!--
@@ -41,6 +67,29 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <div id="luxury-startup">
+    <div>
+      <strong>LUXURY</strong>
+      <div class="load-line" aria-hidden="true"></div>
+      <p id="startup-status" role="status">Cargando el sistema…</p>
+      <button id="startup-retry" type="button" hidden>Reintentar</button>
+    </div>
+  </div>
+  <script>
+    const startup = document.getElementById('luxury-startup');
+    const retry = document.getElementById('startup-retry');
+    retry.addEventListener('click', () => location.reload());
+    window.showLuxuryStartupError = () => {
+      startup.classList.add('failed');
+      document.getElementById('startup-status').textContent = 'Luxury tardó en abrir. Vuelve a intentarlo.';
+      retry.hidden = false;
+    };
+    const startupTimer = setTimeout(window.showLuxuryStartupError, 35000);
+    window.addEventListener('flutter-first-frame', () => {
+      clearTimeout(startupTimer);
+      startup.remove();
+    }, { once: true });
+  </script>
+  <script src="flutter_bootstrap.js" async onerror="window.showLuxuryStartupError()"></script>
 </body>
 </html>

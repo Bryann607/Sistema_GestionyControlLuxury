@@ -485,87 +485,80 @@ class RestaurantStore extends ChangeNotifier {
 
   Future<void> _loadRemoteData() async {
     final client = _client!;
-    final remoteTables = await client
-        .from('mesas')
-        .select()
-        .eq('activa', true)
-        .order('numero');
-    final remoteCategories = await client
-        .from('categorias')
-        .select()
-        .eq('activa', true)
-        .order('orden');
-    final remoteMenu = await client
-        .from('platillos')
-        .select()
-        .eq('activo', true)
-        .order('nombre');
-    final remoteOrders = await client
-        .from('pedidos')
-        .select()
-        .order('creado_en', ascending: false);
-    final remoteLines = await client
-        .from('detalle_pedido')
-        .select()
-        .order('creado_en');
-    final remotePayments = await client
-        .from('pagos')
-        .select()
-        .order('creado_en');
-    final remoteInventory = await client
-        .from('insumos')
-        .select(
-          'id,nombre,descripcion,unidad,stock_actual,stock_minimo,activo',
-        );
-    final remoteStaff = await client.from('usuarios').select();
+    final empty = Future.value(<Map<String, dynamic>>[]);
     final canReadRequests =
         role == StaffRole.kitchen ||
         role == StaffRole.headChef ||
         role == StaffRole.manager ||
         role == StaffRole.administrator;
-    final remoteRequests = canReadRequests
-        ? await client
-              .from('solicitudes_reabastecimiento')
-              .select()
-              .order('creado_en', ascending: false)
-        : <dynamic>[];
-    final remoteRequestItems = canReadRequests
-        ? await client.from('solicitud_items').select()
-        : <dynamic>[];
-    final remoteAlerts = canReadRequests
-        ? await client
-              .from('alertas_cocina')
-              .select()
-              .order('creado_en', ascending: false)
-        : <dynamic>[];
-    final remoteReceipts =
+    final canReadReceipts =
         role == StaffRole.cashier ||
-            role == StaffRole.manager ||
-            role == StaffRole.administrator
-        ? await client
-              .from('notas_venta')
-              .select()
-              .order('emitida_en', ascending: false)
-        : <dynamic>[];
-    final remoteAudit =
-        role == StaffRole.manager || role == StaffRole.administrator
-        ? await client
-              .from('auditoria_movimientos')
-              .select(
-                'id,actor_id,actor_rol,accion,entidad,entidad_id,creado_en',
-              )
-              .order('creado_en', ascending: false)
-              .limit(200)
-        : <dynamic>[];
-    final remoteShifts =
-        role == StaffRole.cashier || role == StaffRole.administrator
-        ? await client
-              .from('turnos_caja')
-              .select()
-              // Caja es un turno operativo del restaurante, no del dispositivo.
-              .order('abierto_en', ascending: false)
-              .limit(1)
-        : <dynamic>[];
+        role == StaffRole.manager ||
+        role == StaffRole.administrator;
+    final canReadAudit =
+        role == StaffRole.manager || role == StaffRole.administrator;
+    final canReadShifts =
+        role == StaffRole.cashier || role == StaffRole.administrator;
+    // Las consultas independientes se cargan en paralelo (pantalla de carga más rápida).
+    final results = await Future.wait<List<Map<String, dynamic>>>([
+      client.from('mesas').select().eq('activa', true).order('numero'),
+      client.from('categorias').select().eq('activa', true).order('orden'),
+      client.from('platillos').select().eq('activo', true).order('nombre'),
+      client.from('pedidos').select().order('creado_en', ascending: false),
+      client.from('detalle_pedido').select().order('creado_en'),
+      client.from('pagos').select().order('creado_en'),
+      client
+          .from('insumos')
+          .select('id,nombre,descripcion,unidad,stock_actual,stock_minimo,activo'),
+      client.from('usuarios').select(),
+      canReadRequests
+          ? client
+                .from('solicitudes_reabastecimiento')
+                .select()
+                .order('creado_en', ascending: false)
+          : empty,
+      canReadRequests ? client.from('solicitud_items').select() : empty,
+      canReadRequests
+          ? client
+                .from('alertas_cocina')
+                .select()
+                .order('creado_en', ascending: false)
+          : empty,
+      canReadReceipts
+          ? client
+                .from('notas_venta')
+                .select()
+                .order('emitida_en', ascending: false)
+          : empty,
+      canReadAudit
+          ? client
+                .from('auditoria_movimientos')
+                .select('id,actor_id,actor_rol,accion,entidad,entidad_id,creado_en')
+                .order('creado_en', ascending: false)
+                .limit(200)
+          : empty,
+      canReadShifts
+          ? client
+                .from('turnos_caja')
+                .select()
+                .order('abierto_en', ascending: false)
+                .limit(1)
+          : empty,
+    ], eagerError: true);
+    final remoteTables = results[0];
+    final remoteCategories = results[1];
+    final remoteMenu = results[2];
+    final remoteOrders = results[3];
+    final remoteLines = results[4];
+    final remotePayments = results[5];
+    final remoteInventory = results[6];
+    final remoteStaff = results[7];
+    final remoteRequests = results[8];
+    final remoteRequestItems = results[9];
+    final remoteAlerts = results[10];
+    final remoteReceipts = results[11];
+    final remoteAudit = results[12];
+    final remoteShifts = results[13];
 
     tables
       ..clear()
@@ -644,7 +637,8 @@ class RestaurantStore extends ChangeNotifier {
       ..addAll(
         remoteOrders.map((row) {
           final id = row['id'] as int;
-          final tableId = row['mesa_id'] as int;
+          // Delivery / para llevar no tienen mesa (mesa_id nulo): evita el fallo al iniciar sesión.
+          final tableId = (row['mesa_id'] as num?)?.toInt() ?? 0;
           final lines = linesByOrder[id] ?? const <OrderLine>[];
           final databaseStatus = OrderStatus.fromDatabase(
             row['estado'] as String,
@@ -666,6 +660,10 @@ class RestaurantStore extends ChangeNotifier {
             incident: row['incidencia_cocina'] as String? ?? '',
             parentOrderId: row['pedido_padre_id'] as int?,
             retirementConfirmed: row['retirada_en'] != null,
+            fulfillmentType: row['tipo_pedido'] as String? ?? 'MESA',
+            customerName: row['cliente_nombre'] as String? ?? '',
+            customerPhone: row['cliente_telefono'] as String? ?? '',
+            deliveryAddress: row['direccion_entrega'] as String? ?? '',
             waiterName:
                 remoteStaff
                         .where(
@@ -2225,7 +2223,8 @@ class RestaurantStore extends ChangeNotifier {
     final row = remoteOrders
         .where((entry) => entry['id'] == orderId)
         .firstOrNull;
-    return row == null ? 0 : tableNumbers[row['mesa_id'] as int] ?? 0;
+    final tableId = (row?['mesa_id'] as num?)?.toInt();
+    return tableId == null ? 0 : tableNumbers[tableId] ?? 0;
   }
 
   @override
