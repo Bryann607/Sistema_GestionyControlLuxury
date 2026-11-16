@@ -5,6 +5,7 @@ import 'package:luxury_app/widgets/luxury_dish_artwork.dart';
 import 'package:luxury_app/widgets/luxury_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:luxury_app/widgets/luxury_progress.dart';
+import 'package:luxury_app/widgets/luxury_profile_dialog.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
 
@@ -1638,11 +1639,7 @@ class _AdminScreenState extends State<AdminScreen> {
           ...members.map(
             (member) => Card(
               child: ResponsiveListTile(
-                leading: CircleAvatar(
-                  child: Text(
-                    member.name.isEmpty ? '?' : member.name[0].toUpperCase(),
-                  ),
-                ),
+                leading: staffAvatar(store, member),
                 title: Text(member.name),
                 subtitle: Text(member.email),
                 trailing: Wrap(
