@@ -196,6 +196,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
       final wasEditing = editingOrder != null;
       setState(() {
         cart.clear();
+        selectedTableId = null;
         editingOrder = null;
         additionalParentId = null;
         page = 2;
@@ -217,14 +218,18 @@ class _WaiterScreenState extends State<WaiterScreen> {
           order.status != OrderStatus.cancelled &&
           order.status != OrderStatus.delivered,
     ).toList();
-    final ordersAvailableForAdditionalItems = store.orders.where(
-      (order) =>
-          order.tableId == table.id &&
-          order.balance > .001 &&
-          order.status != OrderStatus.forPayment &&
-          order.status != OrderStatus.paid &&
-          order.status != OrderStatus.cancelled,
-    ).toList();
+    final additionalParent = store.additionalOrderParent(table);
+    final billingStarted = store.tableBillingStarted(table);
+    final editableOrders = store
+        .liveTableOrders(table.id)
+        .where(
+          (order) =>
+              order.status == OrderStatus.pending &&
+              order.payments.isEmpty &&
+              kitchenStage(order) == OrderStatus.pending,
+        )
+        .toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
     final hasUnsettledOrder = store.orders.any(
       (order) =>
           order.tableId == table.id &&
@@ -257,8 +262,9 @@ class _WaiterScreenState extends State<WaiterScreen> {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (context) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -270,7 +276,19 @@ class _WaiterScreenState extends State<WaiterScreen> {
                   '${table.capacity} personas · ${table.status.label}',
                 ),
               ),
-              if (!hasUnsettledOrder)
+              if (additionalParent != null)
+                ResponsiveListTile(
+                  leading: const Icon(Icons.playlist_add),
+                  title: const Text('Agregar productos a cocina'),
+                  subtitle: const Text(
+                    'Se envían como una comanda nueva y se suman a la cuenta de la mesa',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openOrder(table, parentOrder: additionalParent);
+                  },
+                )
+              else if (!hasUnsettledOrder)
                 ResponsiveListTile(
                   leading: const Icon(Icons.add_shopping_cart),
                   title: const Text('Nuevo pedido'),
@@ -278,23 +296,26 @@ class _WaiterScreenState extends State<WaiterScreen> {
                     Navigator.pop(context);
                     _openOrder(table);
                   },
-                ),
-              if (ordersAvailableForAdditionalItems.isNotEmpty)
-                ResponsiveListTile(
-                  leading: const Icon(Icons.playlist_add),
-                  title: const Text('Agregar productos a cocina'),
+                )
+              else if (billingStarted)
+                const ResponsiveListTile(
+                  leading: Icon(Icons.point_of_sale, color: luxuryRed),
+                  title: Text('Cuenta en cobro'),
                   subtitle: Text(
-                    'Se enviarán en una comanda nueva para el pedido '
-                    '#${ordersAvailableForAdditionalItems.last.id}',
+                    'La mesa no admite más pedidos hasta completar el pago.',
                   ),
+                ),
+              ...editableOrders.map(
+                (order) => ResponsiveListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: Text('Editar pedido #${order.id}'),
+                  subtitle: const Text('Disponible hasta que Cocina inicie'),
                   onTap: () {
                     Navigator.pop(context);
-                    _openOrder(
-                      table,
-                      parentOrder: ordersAvailableForAdditionalItems.last,
-                    );
+                    _openOrder(table, editOrder: order);
                   },
                 ),
+              ),
               if (activeOrders.isNotEmpty)
                 ResponsiveListTile(
                   leading: const Icon(Icons.receipt_long),
@@ -825,6 +846,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
                       runSpacing: 8,
                       children: [
                         if (order.status == OrderStatus.pending &&
+                            kitchenStage(order) == OrderStatus.pending &&
                             order.payments.isEmpty) ...[
                           OutlinedButton.icon(
                             onPressed: () {
@@ -848,15 +870,20 @@ class _WaiterScreenState extends State<WaiterScreen> {
                             order.status != OrderStatus.paid)
                           FilledButton.tonalIcon(
                             onPressed: () =>
-                                _run(() => store.advanceOrder(order)),
+                                _run(() => store.confirmDelivery(order)),
                             icon: const Icon(Icons.done_all),
                             label: const Text('Confirmar entrega'),
                           ),
                         if (order.balance > .001 &&
                             order.status != OrderStatus.forPayment)
                           OutlinedButton.icon(
-                            onPressed: () =>
-                                _run(() => store.setOrderForPayment(order)),
+                            onPressed: () => _run(
+                              () => store.requestBill(
+                                order.isTableOrder
+                                    ? store.liveTableOrders(order.tableId).toList()
+                                    : [order],
+                              ),
+                            ),
                             icon: const Icon(Icons.point_of_sale),
                             label: const Text('Solicitar cuenta'),
                           ),

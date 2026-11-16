@@ -41,6 +41,13 @@ class RestaurantOrder {
   final String deliveryAddress;
 
   bool get isTableOrder => fulfillmentType == 'MESA';
+
+  /// Cocina ya terminó todos los platillos (listos o entregados a la mesa).
+  bool get kitchenFinished {
+    final stage = kitchenStage(this);
+    return stage == OrderStatus.ready || stage == OrderStatus.delivered;
+  }
+
   String get placeLabel => switch (fulfillmentType) {
     'DELIVERY' => 'Delivery${customerName.isEmpty ? '' : ' · $customerName'}',
     'PARA_LLEVAR' => 'Para llevar${customerName.isEmpty ? '' : ' · $customerName'}',
