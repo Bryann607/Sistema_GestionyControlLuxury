@@ -107,93 +107,102 @@ void main() {
     expect(accounts.single.orders, hasLength(2));
   });
 
-  test('Pagar una cuenta repartida en efectivo y Yape cubre toda la mesa', () async {
-    final store = await cashierStore();
-    addTearDown(store.dispose);
-    final table = store.tables.firstWhere((value) => value.id == 1);
-    await store.createOrder(table: table, diners: 2, lines: [sampleLine()]);
-    final first = store.orders.first;
-    await store.createOrder(
-      table: table,
-      diners: 2,
-      lines: [sampleLine(menuItemId: 10, name: 'Chicha morada jarra')],
-    );
-    final second = store.orders.first;
-    await cook(store, first.id);
-    await cook(store, second.id);
+  test(
+    'Pagar una cuenta repartida en efectivo y Yape cubre toda la mesa',
+    () async {
+      final store = await cashierStore();
+      addTearDown(store.dispose);
+      final table = store.tables.firstWhere((value) => value.id == 1);
+      await store.createOrder(table: table, diners: 2, lines: [sampleLine()]);
+      final first = store.orders.first;
+      await store.createOrder(
+        table: table,
+        diners: 2,
+        lines: [sampleLine(menuItemId: 10, name: 'Chicha morada jarra')],
+      );
+      final second = store.orders.first;
+      await cook(store, first.id);
+      await cook(store, second.id);
 
-    final account = store.openAccounts.single;
-    final total = account.balance;
-    expect(total, 36);
+      final account = store.openAccounts.single;
+      final total = account.balance;
+      expect(total, 36);
 
-    await expectLater(
-      store.payAccount(
+      await expectLater(
+        store.payAccount(
+          accountOrders: account.orders,
+          splits: const [
+            PaymentSplit(method: 'Efectivo', amount: 20, cashReceived: 20),
+          ],
+        ),
+        throwsStateError,
+        reason: 'Los pagos deben sumar exactamente la cuenta',
+      );
+      expect(store.orders.expand((order) => order.payments), isEmpty);
+
+      await store.payAccount(
         accountOrders: account.orders,
         splits: const [
-          PaymentSplit(method: 'Efectivo', amount: 20, cashReceived: 20),
+          PaymentSplit(method: 'Efectivo', amount: 20, cashReceived: 50),
+          PaymentSplit(method: 'Yape', amount: 16, reference: 'OP-77'),
         ],
-      ),
-      throwsStateError,
-      reason: 'Los pagos deben sumar exactamente la cuenta',
-    );
-    expect(store.orders.expand((order) => order.payments), isEmpty);
+      );
 
-    await store.payAccount(
-      accountOrders: account.orders,
-      splits: const [
-        PaymentSplit(method: 'Efectivo', amount: 20, cashReceived: 50),
-        PaymentSplit(method: 'Yape', amount: 16, reference: 'OP-77'),
-      ],
-    );
+      expect(
+        store.orders.every((order) => order.status == OrderStatus.paid),
+        isTrue,
+      );
+      expect(store.openAccounts, isEmpty);
+      final methods = store.orders
+          .expand((order) => order.payments)
+          .map((payment) => payment.method)
+          .toSet();
+      expect(methods, {'Efectivo', 'Yape'});
+      final collected = store.orders
+          .expand((order) => order.payments)
+          .fold<double>(0, (sum, payment) => sum + payment.amount);
+      expect(collected, closeTo(36, 0.001));
+    },
+  );
 
-    expect(store.orders.every((order) => order.status == OrderStatus.paid), isTrue);
-    expect(store.openAccounts, isEmpty);
-    final methods = store.orders
-        .expand((order) => order.payments)
-        .map((payment) => payment.method)
-        .toSet();
-    expect(methods, {'Efectivo', 'Yape'});
-    final collected = store.orders
-        .expand((order) => order.payments)
-        .fold<double>(0, (sum, payment) => sum + payment.amount);
-    expect(collected, closeTo(36, 0.001));
-  });
+  test(
+    'Con la cuenta pedida la mesa no admite pedidos; tras pagar abre otra',
+    () async {
+      final store = await cashierStore();
+      addTearDown(store.dispose);
+      final table = store.tables.firstWhere((value) => value.id == 1);
+      await store.createOrder(table: table, diners: 1, lines: [sampleLine()]);
+      final first = store.orders.first;
 
-  test('Con la cuenta pedida la mesa no admite pedidos; tras pagar abre otra', () async {
-    final store = await cashierStore();
-    addTearDown(store.dispose);
-    final table = store.tables.firstWhere((value) => value.id == 1);
-    await store.createOrder(table: table, diners: 1, lines: [sampleLine()]);
-    final first = store.orders.first;
+      await store.requestBill(store.liveTableOrders(table.id).toList());
+      expect(store.tableBillingStarted(table), isTrue);
+      await expectLater(
+        store.createOrder(table: table, diners: 1, lines: [sampleLine()]),
+        throwsStateError,
+      );
 
-    await store.requestBill(store.liveTableOrders(table.id).toList());
-    expect(store.tableBillingStarted(table), isTrue);
-    await expectLater(
-      store.createOrder(table: table, diners: 1, lines: [sampleLine()]),
-      throwsStateError,
-    );
+      await cook(store, first.id);
+      await store.payAccount(
+        accountOrders: store.openAccounts.single.orders,
+        splits: [
+          PaymentSplit(
+            method: 'Efectivo',
+            amount: first.total,
+            cashReceived: first.total,
+          ),
+        ],
+      );
+      expect(store.tableBillingStarted(table), isFalse);
 
-    await cook(store, first.id);
-    await store.payAccount(
-      accountOrders: store.openAccounts.single.orders,
-      splits: [
-        PaymentSplit(
-          method: 'Efectivo',
-          amount: first.total,
-          cashReceived: first.total,
-        ),
-      ],
-    );
-    expect(store.tableBillingStarted(table), isFalse);
-
-    await store.createOrder(
-      table: table,
-      diners: 1,
-      lines: [sampleLine(menuItemId: 10, name: 'Chicha morada jarra')],
-    );
-    expect(store.orders.first.parentOrderId, isNull);
-    expect(store.orders.first.id, isNot(first.id));
-  });
+      await store.createOrder(
+        table: table,
+        diners: 1,
+        lines: [sampleLine(menuItemId: 10, name: 'Chicha morada jarra')],
+      );
+      expect(store.orders.first.parentOrderId, isNull);
+      expect(store.orders.first.id, isNot(first.id));
+    },
+  );
 
   testWidgets('Pedir cuenta no permite confirmar entrega antes de cocina', (
     tester,
@@ -237,19 +246,9 @@ void main() {
     await tester.tap(find.text('Mesa 1'));
     await tester.pumpAndSettle();
     expect(find.text('Agregar productos a cocina'), findsOneWidget);
-<<<<<<< HEAD
     final editTile = find.text('Editar pedido #$id');
     await tester.ensureVisible(editTile);
     await tester.tap(editTile);
-=======
-<<<<<<< HEAD
-    final editTile = find.text('Editar pedido #$id');
-    await tester.ensureVisible(editTile);
-    await tester.tap(editTile);
-=======
-    await tester.tap(find.text('Editar pedido #$id'));
->>>>>>> fcde5862e3b93dda8654d60621ed3b4ad678d561
->>>>>>> cb9c99bf93f82e56f68a2f559708fba1c0dcfdaf
     await tester.pumpAndSettle();
 
     expect(find.text('Editar pedido · Mesa 1'), findsOneWidget);
@@ -283,92 +282,102 @@ void main() {
     expect(find.text('Nueva comanda · Mesa 3'), findsOneWidget);
   });
 
-  testWidgets('Caja agrupa la mesa y bloquea el cobro hasta que Cocina termine', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(800, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final store = await cashierStore();
-    addTearDown(store.dispose);
-    final table = store.tables.firstWhere((value) => value.id == 1);
-    await store.createOrder(table: table, diners: 1, lines: [sampleLine()]);
-    await store.createOrder(
-      table: table,
-      diners: 1,
-      lines: [sampleLine(menuItemId: 10, name: 'Chicha morada jarra')],
-    );
+  testWidgets(
+    'Caja agrupa la mesa y bloquea el cobro hasta que Cocina termine',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = await cashierStore();
+      addTearDown(store.dispose);
+      final table = store.tables.firstWhere((value) => value.id == 1);
+      await store.createOrder(table: table, diners: 1, lines: [sampleLine()]);
+      await store.createOrder(
+        table: table,
+        diners: 1,
+        lines: [sampleLine(menuItemId: 10, name: 'Chicha morada jarra')],
+      );
 
-    await tester.pumpWidget(MaterialApp(home: CashierScreen(store: store)));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(MaterialApp(home: CashierScreen(store: store)));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Mesa 1 · 2 pedidos'), findsOneWidget);
-    await tester.tap(find.byType(ExpansionTile));
-    await tester.pumpAndSettle();
-    final waiting = find.widgetWithText(FilledButton, 'Esperando a Cocina…');
-    await tester.ensureVisible(waiting);
-    expect(tester.widget<FilledButton>(waiting).onPressed, isNull);
-  });
+      expect(find.text('Mesa 1 · 2 pedidos'), findsOneWidget);
+      await tester.tap(find.byType(ExpansionTile));
+      await tester.pumpAndSettle();
+      final waiting = find.widgetWithText(FilledButton, 'Esperando a Cocina…');
+      await tester.ensureVisible(waiting);
+      expect(tester.widget<FilledButton>(waiting).onPressed, isNull);
+    },
+  );
 
-  testWidgets('Caja divide el cobro con total fijo y cobra cuando suma exacto', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(800, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final store = await cashierStore();
-    addTearDown(store.dispose);
-    await store.createOrder(
-      table: store.tables.firstWhere((value) => value.id == 1),
-      diners: 1,
-      lines: [sampleLine(unitPrice: 100)],
-    );
-    await cook(store, store.orders.first.id);
+  testWidgets(
+    'Caja divide el cobro con total fijo y cobra cuando suma exacto',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = await cashierStore();
+      addTearDown(store.dispose);
+      await store.createOrder(
+        table: store.tables.firstWhere((value) => value.id == 1),
+        diners: 1,
+        lines: [sampleLine(unitPrice: 100)],
+      );
+      await cook(store, store.orders.first.id);
 
-    await tester.pumpWidget(MaterialApp(home: CashierScreen(store: store)));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(ExpansionTile));
-    await tester.pumpAndSettle();
-    final charge = find.widgetWithText(FilledButton, 'Cobrar cuenta · S/ 100.00');
-    await tester.ensureVisible(charge);
-    await tester.tap(charge);
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(MaterialApp(home: CashierScreen(store: store)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(ExpansionTile));
+      await tester.pumpAndSettle();
+      final charge = find.widgetWithText(
+        FilledButton,
+        'Cobrar cuenta · S/ 100.00',
+      );
+      await tester.ensureVisible(charge);
+      await tester.tap(charge);
+      await tester.pumpAndSettle();
 
-    // Con un solo método el monto está bloqueado.
-    expect(find.text('Total a cobrar (fijo)'), findsOneWidget);
-    expect(
-      tester.widget<TextField>(find.byKey(const ValueKey('split-amount-0'))).enabled,
-      isFalse,
-    );
+      // Con un solo método el monto está bloqueado.
+      expect(find.text('Total a cobrar (fijo)'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('split-amount-0')))
+            .enabled,
+        isFalse,
+      );
 
-    await tester.tap(find.text('Dividir con otro método'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('split-amount-0')), '40');
-    await tester.pumpAndSettle();
-    final confirm = find.widgetWithText(FilledButton, 'Registrar cobro');
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+      await tester.tap(find.text('Dividir con otro método'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('split-amount-0')),
+        '40',
+      );
+      await tester.pumpAndSettle();
+      final confirm = find.widgetWithText(FilledButton, 'Registrar cobro');
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
 
-    await tester.tap(find.text('Completar con lo que falta').last);
-    await tester.pumpAndSettle();
-    final reference = find.byKey(const ValueKey('split-reference-1'));
-    await tester.ensureVisible(reference);
-    await tester.enterText(reference, 'OP-9');
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(confirm);
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+      await tester.tap(find.text('Completar con lo que falta').last);
+      await tester.pumpAndSettle();
+      final reference = find.byKey(const ValueKey('split-reference-1'));
+      await tester.ensureVisible(reference);
+      await tester.enterText(reference, 'OP-9');
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(confirm);
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
 
-    await tester.tap(confirm);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    final payments = store.orders.first.payments;
-    expect(payments.map((payment) => payment.method), ['Efectivo', 'Yape']);
-    expect(payments.map((payment) => payment.amount), [40, 60]);
-    expect(store.orders.first.balance, 0);
-    expect(find.text('Cobro registrado'), findsOneWidget);
-    await tester.tap(find.text('Continuar'));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-  });
+      await tester.tap(confirm);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      final payments = store.orders.first.payments;
+      expect(payments.map((payment) => payment.method), ['Efectivo', 'Yape']);
+      expect(payments.map((payment) => payment.amount), [40, 60]);
+      expect(store.orders.first.balance, 0);
+      expect(find.text('Cobro registrado'), findsOneWidget);
+      await tester.tap(find.text('Continuar'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
