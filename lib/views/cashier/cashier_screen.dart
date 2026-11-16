@@ -87,7 +87,7 @@ class _CashierScreenState extends State<CashierScreen> {
     }
   }
 
-  Future<void> _collect(RestaurantOrder order) async {
+  Future<void> _collect(AccountGroup group) async {
     if (!store.shiftOpen) {
       setState(() => page = 2);
       LuxuryFeedback.error(
@@ -96,217 +96,40 @@ class _CashierScreenState extends State<CashierScreen> {
       );
       return;
     }
-    final amount = TextEditingController(
-      text: order.balance.toStringAsFixed(2),
-    );
-    final received = TextEditingController(
-      text: order.balance.toStringAsFixed(2),
-    );
-    final reference = TextEditingController();
-    var selectedMethod = 'Efectivo';
-    final requiresEarlyConfirmation =
-        kitchenStage(order) == OrderStatus.pending ||
-        kitchenStage(order) == OrderStatus.preparing;
-    var earlyPaymentConfirmed = !requiresEarlyConfirmation;
-    final result = await showDialog<(String, String, String, String, bool)>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          String? validationError() {
-            final paymentAmount = double.tryParse(amount.text);
-            if (paymentAmount == null ||
-                !paymentAmount.isFinite ||
-                paymentAmount <= 0 ||
-                paymentAmount > order.balance + .001) {
-              return 'El monto debe ser mayor a cero y no superar el saldo pendiente.';
-            }
-            if (selectedMethod == 'Efectivo') {
-              final cashReceived = double.tryParse(received.text);
-              if (cashReceived == null ||
-                  !cashReceived.isFinite ||
-                  cashReceived < paymentAmount) {
-                return 'El efectivo recibido debe cubrir el monto de este cobro.';
-              }
-            } else if (reference.text.trim().isEmpty) {
-              return 'Registra el número de operación o la referencia del pago.';
-            }
-            return null;
-          }
-
-          final error = validationError();
-          return AlertDialog(
-            title: Text('Cobrar · Pedido #${order.id}'),
-            content: SizedBox(
-              width: 420,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Total original de la cuenta: ${money(order.total)}',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    Text(
-                      'Pagado: ${money(order.paid)} · Saldo pendiente: ${money(order.balance)}',
-                    ),
-                    const SizedBox(height: 12),
-                    if (requiresEarlyConfirmation)
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: earlyPaymentConfirmed,
-                        onChanged: (value) => setDialogState(
-                          () => earlyPaymentConfirmed = value ?? false,
-                        ),
-                        title: const Text(
-                          'Confirmo el pago antes de terminar la preparación',
-                        ),
-                        controlAffinity: ListTileControlAffinity.leading,
-                      ),
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedMethod,
-                      decoration: const InputDecoration(
-                        labelText: 'Método de pago de esta operación',
-                      ),
-                      items: const ['Efectivo', 'Yape', 'Plin', 'Tarjeta']
-                          .map(
-                            (value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(value),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) => setDialogState(
-                        () => selectedMethod = value ?? selectedMethod,
-                      ),
-                    ),
-                    TextField(
-                      controller: amount,
-                      autofocus: true,
-                      onChanged: (_) => setDialogState(() {}),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Monto de este cobro',
-                        prefixText: 'S/ ',
-                        helperText:
-                            'Saldo restante máximo ${money(order.balance)}',
-                      ),
-                    ),
-                    if (selectedMethod == 'Efectivo') ...[
-                      TextField(
-                        controller: received,
-                        onChanged: (_) => setDialogState(() {}),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Efectivo recibido',
-                          prefixText: 'S/ ',
-                        ),
-                      ),
-                      Builder(
-                        builder: (context) {
-                          final paymentAmount =
-                              double.tryParse(amount.text) ?? 0;
-                          final cashReceived =
-                              double.tryParse(received.text) ?? 0;
-                          final change = (cashReceived - paymentAmount)
-                              .clamp(0, double.infinity)
-                              .toDouble();
-                          return Text('Vuelto para entregar: ${money(change)}');
-                        },
-                      ),
-                    ] else
-                      TextField(
-                        controller: reference,
-                        onChanged: (_) => setDialogState(() {}),
-                        decoration: const InputDecoration(
-                          labelText: 'N.º de operación / referencia',
-                        ),
-                      ),
-                    if (error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          error,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed:
-                    error != null ||
-                        (requiresEarlyConfirmation && !earlyPaymentConfirmed)
-                    ? null
-                    : () => Navigator.pop(context, (
-                        selectedMethod,
-                        amount.text,
-                        reference.text,
-                        received.text,
-                        earlyPaymentConfirmed,
-                      )),
-                child: const Text('Registrar pago'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-    if (result != null) {
-      await _run(() async {
-        final value = double.parse(result.$2);
-        final receivedAmount = result.$1 == 'Efectivo'
-            ? double.parse(result.$4)
-            : null;
-        await store.recordPayment(
-          order: order,
-          method: result.$1,
-          amount: value,
-          reference: result.$3,
-          cashReceived: receivedAmount,
-          earlyPaymentConfirmed: result.$5,
-        );
-        final change = receivedAmount == null
-            ? 0
-            : (receivedAmount - value).clamp(0, double.infinity).toDouble();
-        if (mounted) setState(() {});
-        if (mounted) {
-          await LuxuryFeedback.success(
-            context,
-            title: 'Pago registrado',
-            message: result.$1 == 'Efectivo' && change > 0
-                ? 'Se registró el abono de ${money(value)}. Entrega el vuelto de ${money(change)}.'
-                : 'Se registró el abono de ${money(value)} correctamente.',
-          );
-        }
-      });
+    if (!group.kitchenFinished) {
+      LuxuryFeedback.error(
+        context,
+        'Cocina aún no termina esta cuenta. Podrás cobrar cuando todos los platillos estén listos.',
+      );
+      return;
     }
-    amount.dispose();
-    received.dispose();
-    reference.dispose();
+    final splits = await showDialog<List<PaymentSplit>>(
+      context: context,
+      builder: (context) => _SplitPaymentDialog(group: group),
+    );
+    if (splits == null) return;
+    await _run(() async {
+      await store.payAccount(accountOrders: group.orders, splits: splits);
+      final change = splits.fold<double>(0, (sum, split) {
+        if (split.method != 'Efectivo') return sum;
+        final extra = (split.cashReceived ?? split.amount) - split.amount;
+        return sum + (extra > 0 ? extra : 0);
+      });
+      if (mounted) setState(() {});
+      if (mounted) {
+        await LuxuryFeedback.success(
+          context,
+          title: 'Cobro registrado',
+          message: change > 0
+              ? 'Se cobró ${group.label} por ${money(group.balance)}. Entrega el vuelto de ${money(change)}.'
+              : 'Se cobró ${group.label} por ${money(group.balance)} correctamente.',
+        );
+      }
+    });
   }
 
   Widget _accounts() {
-    final active =
-        store.orders
-            .where(
-              (order) =>
-                  order.balance > .001 && order.status != OrderStatus.cancelled,
-            )
-            .toList()
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final accounts = store.openAccounts;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -316,95 +139,145 @@ class _CashierScreenState extends State<CashierScreen> {
           description: 'Consulta cada consumo antes de registrar un pago.',
           icon: Icons.receipt_long_rounded,
         ),
-        SectionTitle(
+        const SectionTitle(
           title: 'Cuentas y cobros',
           subtitle:
-              'Registra cada operación por separado hasta completar el saldo',
+              'Una cuenta por mesa: se actualiza con cada pedido que agregan al salón',
         ),
-        if (active.isEmpty)
+        if (!store.shiftOpen)
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.lock_outline, color: luxuryRed),
+              title: Text('Tu turno de hoy no está abierto'),
+              subtitle: Text(
+                'Administración debe abrir tu turno para que puedas registrar cobros.',
+              ),
+            ),
+          ),
+        if (accounts.isEmpty)
           const EmptyState(
             message: 'No hay cuentas pendientes de pago.',
             icon: Icons.task_alt,
           )
         else
-          ...active.map(
-            (order) => Card(
-              child: ExpansionTile(
-                leading: CircleAvatar(
-                  backgroundColor: luxuryGold.withValues(alpha: .14),
-                  child: order.isTableOrder
-                      ? Text('${order.tableNumber}')
-                      : const Icon(Icons.delivery_dining, size: 20),
-                ),
-                title: Text('${order.placeLabel} · Pedido #${order.id}'),
-                subtitle: Text(
-                  '${order.lines.length} productos · Total ${money(order.total)}',
-                ),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text('Saldo', style: TextStyle(fontSize: 11)),
-                    Text(
-                      money(order.balance),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: luxuryRed,
-                      ),
-                    ),
-                  ],
-                ),
+          ...accounts.map(_accountCard),
+      ],
+    );
+  }
+
+  Widget _accountCard(AccountGroup group) {
+    final ready = group.kitchenFinished;
+    return Card(
+      child: ExpansionTile(
+        key: ValueKey(group.key),
+        leading: CircleAvatar(
+          backgroundColor: luxuryGold.withValues(alpha: .14),
+          child: group.isTable
+              ? Text('${group.first.tableNumber}')
+              : const Icon(Icons.delivery_dining, size: 20),
+        ),
+        title: Text(
+          group.orders.length > 1
+              ? '${group.label} · ${group.orders.length} pedidos'
+              : '${group.label} · Pedido #${group.first.id}',
+        ),
+        subtitle: Text(
+          '${group.lines.length} productos · Total ${money(group.total)}',
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            const Text('Saldo', style: TextStyle(fontSize: 11)),
+            Text(
+              money(group.balance),
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: luxuryRed,
+              ),
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
                 children: [
-                  ...order.lines.map(
-                    (line) => ResponsiveListTile(
-                      dense: true,
-                      title: Text('${line.quantity} × ${line.name}'),
-                      subtitle: line.note.isEmpty ? null : Text(line.note),
-                      trailing: Text(money(line.subtotal)),
-                    ),
+                  StatusBadge(
+                    label: ready ? 'Cocina lista' : 'Cocina preparando',
+                    color: ready ? luxuryGreen : luxuryGold,
                   ),
-                  if (order.payments.isNotEmpty)
-                    ...order.payments.map(
-                      (payment) => ResponsiveListTile(
-                        dense: true,
-                        leading: const Icon(
-                          Icons.check_circle_outline,
-                          color: luxuryGreen,
-                        ),
-                        title: Text(payment.method),
-                        trailing: Text(money(payment.amount)),
-                      ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: OutlinedButton.icon(
-                      onPressed: () => _run(() => printPreBillPdf(order)),
-                      icon: const Icon(Icons.receipt_long_outlined),
-                      label: const Text(
-                        'Ver / imprimir precuenta (sin cobrar)',
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () => _collect(order),
-                        icon: const Icon(Icons.point_of_sale),
-                        label: Text(
-                          order.paid > 0
-                              ? 'Registrar siguiente abono · ${money(order.balance)}'
-                              : 'Cobrar cuenta · ${money(order.balance)}',
-                        ),
-                      ),
-                    ),
-                  ),
+                  if (group.billRequested)
+                    StatusBadge(label: 'Cuenta solicitada', color: luxuryBrown),
                 ],
               ),
             ),
           ),
-      ],
+          for (final order in group.orders) ...[
+            if (group.orders.length > 1)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    order.parentOrderId == null
+                        ? 'Pedido #${order.id}'
+                        : 'Pedido #${order.id} (adicional)',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ...order.lines.map(
+              (line) => ResponsiveListTile(
+                dense: true,
+                title: Text('${line.quantity} × ${line.name}'),
+                subtitle: line.note.isEmpty ? null : Text(line.note),
+                trailing: Text(money(line.subtotal)),
+              ),
+            ),
+          ],
+          ...group.payments.map(
+            (payment) => ResponsiveListTile(
+              dense: true,
+              leading: const Icon(
+                Icons.check_circle_outline,
+                color: luxuryGreen,
+              ),
+              title: Text(payment.method),
+              trailing: Text(money(payment.amount)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: OutlinedButton.icon(
+              onPressed: () => _run(() => printPreBillPdf(group.combined)),
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: const Text('Ver / imprimir precuenta (sin cobrar)'),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: ready ? () => _collect(group) : null,
+                icon: Icon(ready ? Icons.point_of_sale : Icons.hourglass_top),
+                label: Text(
+                  !ready
+                      ? 'Esperando a Cocina…'
+                      : group.paid > 0
+                      ? 'Cobrar saldo · ${money(group.balance)}'
+                      : 'Cobrar cuenta · ${money(group.balance)}',
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -702,4 +575,291 @@ class _CashierScreenState extends State<CashierScreen> {
       );
     },
   );
+}
+
+class _SplitRow {
+  _SplitRow(this.method, double initial)
+    : amount = TextEditingController(text: initial.toStringAsFixed(2)),
+      received = TextEditingController(text: initial.toStringAsFixed(2)),
+      reference = TextEditingController();
+
+  String method;
+  final TextEditingController amount;
+  final TextEditingController received;
+  final TextEditingController reference;
+  bool receivedTouched = false;
+
+  void dispose() {
+    amount.dispose();
+    received.dispose();
+    reference.dispose();
+  }
+}
+
+/// Cobro de una cuenta completa. El total es fijo (no se edita) y puede
+/// repartirse entre varios métodos de pago que deben sumar exactamente.
+class _SplitPaymentDialog extends StatefulWidget {
+  const _SplitPaymentDialog({required this.group});
+  final AccountGroup group;
+
+  @override
+  State<_SplitPaymentDialog> createState() => _SplitPaymentDialogState();
+}
+
+class _SplitPaymentDialogState extends State<_SplitPaymentDialog> {
+  static const _methods = ['Efectivo', 'Yape', 'Plin', 'Tarjeta'];
+  late final List<_SplitRow> rows;
+  final List<_SplitRow> _removed = [];
+
+  double get balance => widget.group.balance;
+
+  @override
+  void initState() {
+    super.initState();
+    rows = [_SplitRow('Efectivo', balance)];
+  }
+
+  @override
+  void dispose() {
+    for (final row in [...rows, ..._removed]) {
+      row.dispose();
+    }
+    super.dispose();
+  }
+
+  double _value(TextEditingController controller) =>
+      double.tryParse(controller.text.trim().replaceAll(',', '.')) ?? 0;
+
+  double get assigned => rows.fold(0, (sum, row) => sum + _value(row.amount));
+  double get remaining => balance - assigned;
+
+  double get change => rows
+      .where((row) => row.method == 'Efectivo')
+      .fold<double>(0, (sum, row) {
+        final extra = _value(row.received) - _value(row.amount);
+        return sum + (extra > 0 ? extra : 0);
+      });
+
+  void _addRow() {
+    setState(() {
+      final method = rows.any((row) => row.method == 'Efectivo')
+          ? 'Yape'
+          : 'Efectivo';
+      rows.add(_SplitRow(method, 0));
+    });
+  }
+
+  void _fill(_SplitRow row) {
+    final value = _value(row.amount) + remaining;
+    if (value <= 0) return;
+    setState(() {
+      row.amount.text = value.toStringAsFixed(2);
+      if (!row.receivedTouched) row.received.text = row.amount.text;
+    });
+  }
+
+  String? _error() {
+    if (remaining.abs() > .009) {
+      return remaining > 0
+          ? 'Falta asignar ${money(remaining)} para completar la cuenta.'
+          : 'Los pagos superan la cuenta por ${money(-remaining)}.';
+    }
+    for (final row in rows) {
+      final amount = _value(row.amount);
+      if (amount <= 0) return 'Cada método debe tener un monto mayor a cero.';
+      if (row.method == 'Efectivo') {
+        if (_value(row.received) + .001 < amount) {
+          return 'El efectivo recibido debe cubrir el monto en efectivo.';
+        }
+      } else if (row.reference.text.trim().isEmpty) {
+        return 'Registra el número de operación de ${row.method}.';
+      }
+    }
+    return null;
+  }
+
+  List<PaymentSplit> _splits() => [
+    for (final row in rows)
+      PaymentSplit(
+        method: row.method,
+        amount: _value(row.amount),
+        reference: row.reference.text.trim(),
+        cashReceived: row.method == 'Efectivo' ? _value(row.received) : null,
+      ),
+  ];
+
+  Widget _rowCard(int index) {
+    final row = rows[index];
+    final locked = rows.length == 1;
+    return Card(
+      key: ObjectKey(row),
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    key: ValueKey('split-method-$index'),
+                    initialValue: row.method,
+                    decoration: InputDecoration(
+                      labelText: locked
+                          ? 'Método de pago'
+                          : 'Método ${index + 1}',
+                    ),
+                    items: [
+                      for (final method in _methods)
+                        DropdownMenuItem(value: method, child: Text(method)),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => row.method = value ?? row.method),
+                  ),
+                ),
+                if (!locked)
+                  IconButton(
+                    tooltip: 'Quitar método',
+                    onPressed: () => setState(() {
+                      _removed.add(rows.removeAt(index));
+                    }),
+                    icon: const Icon(Icons.close),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: ValueKey('split-amount-$index'),
+              controller: row.amount,
+              enabled: !locked,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: (_) {
+                if (!row.receivedTouched) row.received.text = row.amount.text;
+                setState(() {});
+              },
+              decoration: InputDecoration(
+                labelText: locked ? 'Monto (bloqueado)' : 'Monto',
+                prefixText: 'S/ ',
+                suffixIcon: locked ? const Icon(Icons.lock_outline) : null,
+              ),
+            ),
+            if (!locked)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => _fill(row),
+                  child: const Text('Completar con lo que falta'),
+                ),
+              ),
+            const SizedBox(height: 6),
+            if (row.method == 'Efectivo')
+              TextField(
+                key: ValueKey('split-received-$index'),
+                controller: row.received,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                onChanged: (_) {
+                  row.receivedTouched = true;
+                  setState(() {});
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Efectivo recibido',
+                  prefixText: 'S/ ',
+                ),
+              )
+            else
+              TextField(
+                key: ValueKey('split-reference-$index'),
+                controller: row.reference,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: 'N.º de operación · ${row.method}',
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final error = _error();
+    final group = widget.group;
+    final diff = remaining;
+    return AlertDialog(
+      title: Text('Cobrar · ${group.label}'),
+      content: SizedBox(
+        width: 440,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Total a cobrar (fijo)',
+                  prefixIcon: Icon(Icons.lock_outline),
+                ),
+                child: Text(
+                  money(balance),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (group.paid > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Total de la cuenta ${money(group.total)} · ya pagado ${money(group.paid)}',
+                  ),
+                ),
+              const SizedBox(height: 12),
+              for (var i = 0; i < rows.length; i++) _rowCard(i),
+              TextButton.icon(
+                onPressed: rows.length >= 4 ? null : _addRow,
+                icon: const Icon(Icons.call_split),
+                label: const Text('Dividir con otro método'),
+              ),
+              Text(
+                'Asignado ${money(assigned)} · ${diff.abs() <= .009
+                    ? 'cuenta completa'
+                    : diff > 0
+                    ? 'falta ${money(diff)}'
+                    : 'excede ${money(-diff)}'}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              if (change > 0) Text('Vuelto para entregar: ${money(change)}'),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    error,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: error == null
+              ? () => Navigator.pop(context, _splits())
+              : null,
+          child: const Text('Registrar cobro'),
+        ),
+      ],
+    );
+  }
 }

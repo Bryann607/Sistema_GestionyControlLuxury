@@ -1076,6 +1076,83 @@ class RestaurantStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- Cuenta de la mesa ---------------------------------------------------
+
+  /// Pedidos de la mesa que siguen vigentes (sin cancelar ni retirar).
+  Iterable<RestaurantOrder> liveTableOrders(int tableId) => orders.where(
+    (order) =>
+        order.tableId == tableId &&
+        order.isTableOrder &&
+        !order.retirementConfirmed &&
+        order.status != OrderStatus.cancelled,
+  );
+
+  /// La cuenta ya se pidió o tiene abonos sin completar: la mesa no admite
+  /// más pedidos hasta terminar el pago.
+  bool tableBillingStarted(RestaurantTable table) =>
+      liveTableOrders(table.id).any(
+        (order) =>
+            order.status != OrderStatus.paid &&
+            (order.status == OrderStatus.forPayment ||
+                order.payments.isNotEmpty),
+      );
+
+  /// Pedido principal abierto de la mesa; todo consumo nuevo se suma a él
+  /// mientras la cuenta no se haya pedido ni cobrado.
+  RestaurantOrder? additionalOrderParent(RestaurantTable table) {
+    final open =
+        liveTableOrders(table.id)
+            .where(
+              (order) =>
+                  order.status != OrderStatus.paid &&
+                  order.status != OrderStatus.forPayment &&
+                  order.payments.isEmpty,
+            )
+            .toList()
+          ..sort((a, b) => a.id.compareTo(b.id));
+    if (open.isEmpty) return null;
+    return open.where((order) => order.parentOrderId == null).firstOrNull ??
+        open.first;
+  }
+
+  /// Se puede tomar un pedido en la mesa: se suma a la cuenta abierta o, si
+  /// la anterior ya se pagó por completo, abre una cuenta nueva.
+  bool canOrderAtTable(RestaurantTable table) {
+    final current = tables.where((entry) => entry.id == table.id).firstOrNull;
+    return current != null && current.active && !tableBillingStarted(current);
+  }
+
+  /// Cuentas por cobrar agrupadas por mesa (delivery y para llevar van solas).
+  List<AccountGroup> get openAccounts {
+    final byKey = <String, List<RestaurantOrder>>{};
+    for (final order in orders) {
+      if (order.status == OrderStatus.cancelled || order.balance <= .001) {
+        continue;
+      }
+      final key = order.isTableOrder
+          ? 'mesa-${order.tableId}'
+          : 'pedido-${order.id}';
+      byKey.putIfAbsent(key, () => []).add(order);
+    }
+    return [
+      for (final list in byKey.values)
+        AccountGroup(list..sort((a, b) => a.id.compareTo(b.id))),
+    ]..sort((a, b) => a.first.createdAt.compareTo(b.first.createdAt));
+  }
+
+  String _newRequestId() {
+    final random = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+        '${hex.substring(20)}';
+  }
+
   Future<void> createOrder({
     required RestaurantTable table,
     required List<OrderLine> lines,
@@ -1087,52 +1164,51 @@ class RestaurantStore extends ChangeNotifier {
         'Agrega al menos un platillo antes de enviar la comanda.',
       );
     }
-    if (diners < 1 || diners > table.capacity) {
+    final current = tables.where((entry) => entry.id == table.id).firstOrNull;
+    if (current == null || !current.active) {
+      throw StateError('La mesa ya no está disponible.');
+    }
+    if (diners < 1 || diners > current.capacity) {
       throw StateError(
         'Los comensales deben estar entre 1 y la capacidad de la mesa.',
       );
     }
-    final parent = parentOrderId == null
-        ? null
-        : orders.where((order) => order.id == parentOrderId).firstOrNull;
-    if ((parentOrderId == null &&
-            orders.any(
-              (order) =>
-                  order.tableId == table.id &&
-                  order.status != OrderStatus.paid &&
-                  order.status != OrderStatus.cancelled,
-            )) ||
-        (parentOrderId != null &&
-            (parent == null ||
-                parent.tableId != table.id ||
-                parent.status == OrderStatus.forPayment ||
-                parent.status == OrderStatus.paid ||
-                parent.status == OrderStatus.cancelled ||
-                parent.payments.isNotEmpty ||
-                parent.retirementConfirmed))) {
+    if (tableBillingStarted(current)) {
       throw StateError(
-        'Agrega los productos al pedido abierto de esta mesa. Después de pagar, crea un pedido nuevo.',
+        'La cuenta de la mesa ya está en cobro. Completa el pago antes de '
+        'tomar un nuevo pedido.',
       );
+    }
+    // Con una cuenta abierta, todo consumo nuevo se suma a ella.
+    final parentId = parentOrderId ?? additionalOrderParent(current)?.id;
+    if (parentId != null) {
+      final parent = orders.where((order) => order.id == parentId).firstOrNull;
+      if (parent == null ||
+          parent.tableId != current.id ||
+          parent.retirementConfirmed ||
+          parent.payments.isNotEmpty ||
+          parent.status == OrderStatus.paid ||
+          parent.status == OrderStatus.forPayment ||
+          parent.status == OrderStatus.cancelled) {
+        throw StateError('El pedido principal ya no está abierto en esta mesa.');
+      }
     }
     if (_client != null) {
       final result = await _client.rpc(
-        'crear_pedido',
+        'crear_pedido_sincronizado',
         params: {
-          'p_mesa_id': table.id,
+          'p_solicitud_id': _newRequestId(),
+          'p_mesa_id': current.id,
           'p_comensales': diners,
-          'p_pedido_padre_id': parentOrderId,
-          'p_items': lines
-              .map(
-                (line) => {
-                  'platillo_id': line.menuItemId,
-                  'cantidad': line.quantity,
-                  'observaciones': line.note,
-                },
-              )
-              .toList(),
+          'p_pedido_padre_id': parentId,
+          'p_tipo_pedido': 'MESA',
+          'p_cliente_nombre': '',
+          'p_cliente_telefono': '',
+          'p_direccion_entrega': null,
+          'p_items': _itemsToJson(lines),
         },
       );
-      if (result == null) {
+      if (int.tryParse('$result') == null) {
         throw StateError('Supabase no confirmó la creación del pedido.');
       }
       await _loadRemoteData();
@@ -1141,16 +1217,16 @@ class RestaurantStore extends ChangeNotifier {
         0,
         RestaurantOrder(
           id: _nextId++,
-          tableId: table.id,
-          tableNumber: table.number,
+          tableId: current.id,
+          tableNumber: current.number,
           createdAt: DateTime.now(),
           diners: diners,
           lines: List.unmodifiable(lines),
           waiterName: displayName,
-          parentOrderId: parentOrderId,
+          parentOrderId: parentId,
         ),
       );
-      _recalculateTable(table.id);
+      _recalculateTable(current.id);
       await _persist();
     }
     _recordLocalAudit('Crear pedido', 'pedidos', orders.first.id.toString());
@@ -1163,10 +1239,15 @@ class RestaurantStore extends ChangeNotifier {
     required int diners,
   }) async {
     if (order.status != OrderStatus.pending ||
-        order.payments.isNotEmpty ||
-        lines.isEmpty ||
-        diners < 1) {
-      throw StateError('Solo se edita un pedido pendiente y sin abonos.');
+        kitchenStage(order) != OrderStatus.pending ||
+        order.payments.isNotEmpty) {
+      throw StateError(
+        'Cocina ya inició este pedido y no se puede editar. Agrega lo que '
+        'falte como un pedido adicional de la mesa.',
+      );
+    }
+    if (lines.isEmpty || diners < 1) {
+      throw StateError('Agrega al menos un platillo y un comensal.');
     }
     if (_client != null) {
       await _client.rpc(
@@ -1262,6 +1343,41 @@ class RestaurantStore extends ChangeNotifier {
       )
       .toList(growable: false);
 
+  /// El mesero confirma la entrega a la mesa. Solo es posible cuando Cocina
+  /// terminó todos los platillos; no avanza el estado de la comanda.
+  Future<void> confirmDelivery(RestaurantOrder order) async {
+    if (order.status == OrderStatus.cancelled) {
+      throw StateError('Este pedido fue cancelado.');
+    }
+    final stage = kitchenStage(order);
+    if (stage == OrderStatus.delivered) {
+      throw StateError('Este pedido ya fue entregado.');
+    }
+    if (stage != OrderStatus.ready) {
+      throw StateError(
+        'Cocina aún no termina este pedido. Podrás confirmar la entrega '
+        'cuando esté listo.',
+      );
+    }
+    await advanceOrder(order);
+  }
+
+  /// Pide la cuenta de todos los pedidos abiertos de la mesa a la vez.
+  Future<void> requestBill(List<RestaurantOrder> accountOrders) async {
+    final targets = accountOrders
+        .where(
+          (order) =>
+              order.status != OrderStatus.paid &&
+              order.status != OrderStatus.cancelled &&
+              order.status != OrderStatus.forPayment,
+        )
+        .toList();
+    if (targets.isEmpty) throw StateError('La cuenta ya fue solicitada.');
+    for (final order in targets) {
+      await setOrderForPayment(order);
+    }
+  }
+
   Future<void> advanceOrder(RestaurantOrder order) async {
     final currentKitchenStage = kitchenStage(order);
     final nextStatus = switch (currentKitchenStage) {
@@ -1309,38 +1425,173 @@ class RestaurantStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _validatePaymentPart({
+    required String method,
+    required double amount,
+    required String reference,
+    double? cashReceived,
+  }) {
+    if (!amount.isFinite || amount <= 0) {
+      throw StateError('El monto de cada pago debe ser mayor a cero.');
+    }
+    if (method != 'Efectivo' && reference.trim().isEmpty) {
+      throw StateError(
+        'Registra el número de operación o referencia del pago ($method).',
+      );
+    }
+    if (method == 'Efectivo' &&
+        (cashReceived == null || cashReceived + 0.001 < amount)) {
+      throw StateError('El efectivo recibido debe cubrir el monto en efectivo.');
+    }
+  }
+
+  double _cents(double value) => (value * 100).round() / 100;
+
   Future<void> recordPayment({
     required RestaurantOrder order,
     required String method,
     required double amount,
     String reference = '',
     double? cashReceived,
-    bool earlyPaymentConfirmed = false,
   }) async {
-    if (!shiftOpen) {
-      throw StateError('Caja cerrada. Solicita al administrador la apertura del turno.');
+    if (isDemo && !shiftOpen) {
+      throw StateError(
+        'Caja cerrada. Solicita al administrador la apertura del turno.',
+      );
+    }
+    if (!order.kitchenFinished) {
+      throw StateError(
+        'Cocina aún no termina este pedido. Podrás cobrarlo cuando esté listo.',
+      );
     }
     if (amount <= 0 || amount > order.balance + 0.001) {
       throw StateError(
         'El monto debe ser mayor a cero y no superar el saldo pendiente.',
       );
     }
-    if (method != 'Efectivo' && reference.trim().isEmpty) {
+    _validatePaymentPart(
+      method: method,
+      amount: amount,
+      reference: reference,
+      cashReceived: cashReceived,
+    );
+    await _postPayment(
+      order.id,
+      method: method,
+      amount: amount,
+      reference: reference,
+      cashReceived: cashReceived,
+      refresh: true,
+    );
+    _recordLocalAudit('Registrar pago', 'pagos', order.id.toString());
+    notifyListeners();
+  }
+
+  /// Cobra una cuenta completa (una mesa con todos sus consumos) repartida en
+  /// uno o varios métodos de pago. Los pagos deben sumar exactamente el saldo.
+  Future<void> payAccount({
+    required List<RestaurantOrder> accountOrders,
+    required List<PaymentSplit> splits,
+  }) async {
+    if (isDemo && !shiftOpen) {
       throw StateError(
-        'Registra el número de operación o referencia del pago.',
+        'Caja cerrada. Solicita al administrador la apertura del turno.',
       );
     }
-    if (method == 'Efectivo' &&
-        (cashReceived == null || cashReceived < amount)) {
-      throw StateError('El efectivo recibido debe cubrir el monto del abono.');
-    }
-    if ((kitchenStage(order) == OrderStatus.pending ||
-            kitchenStage(order) == OrderStatus.preparing) &&
-        !earlyPaymentConfirmed) {
+    final targets = [
+      for (final order in accountOrders)
+        if (order.balance > .001) order,
+    ]..sort((a, b) => a.id.compareTo(b.id));
+    if (targets.isEmpty) throw StateError('La cuenta ya está pagada.');
+    if (targets.any((order) => !order.kitchenFinished)) {
       throw StateError(
-        'Confirma el cobro anticipado antes de registrar el pago.',
+        'Cocina aún no termina todos los platillos de esta cuenta. Podrás '
+        'cobrar cuando estén listos.',
       );
     }
+    if (splits.isEmpty) throw StateError('Registra al menos un método de pago.');
+    final balance = targets.fold<double>(0, (sum, order) => sum + order.balance);
+    final assigned = splits.fold<double>(0, (sum, split) => sum + split.amount);
+    if ((assigned - balance).abs() > 0.009) {
+      throw StateError(
+        'Los pagos suman S/ ${assigned.toStringAsFixed(2)} y la cuenta es de '
+        'S/ ${balance.toStringAsFixed(2)}. Deben coincidir exactamente.',
+      );
+    }
+    for (final split in splits) {
+      _validatePaymentPart(
+        method: split.method,
+        amount: split.amount,
+        reference: split.reference,
+        cashReceived: split.cashReceived,
+      );
+    }
+
+    final pending = {for (final order in targets) order.id: order.balance};
+    var registered = 0.0;
+    try {
+      for (final split in splits) {
+        var remaining = _cents(split.amount);
+        while (remaining > 0.004) {
+          final candidates = targets.where((order) => pending[order.id]! > 0.004);
+          if (candidates.isEmpty) break;
+          final target = candidates.first;
+          final portion = _cents(math.min(remaining, pending[target.id]!));
+          final lastPortion = remaining - portion <= 0.004;
+          // El vuelto del efectivo se asigna a la última porción del pago.
+          final cash = split.method == 'Efectivo'
+              ? _cents(
+                  lastPortion
+                      ? portion +
+                            ((split.cashReceived ?? split.amount) -
+                                split.amount)
+                      : portion,
+                )
+              : null;
+          await _postPayment(
+            target.id,
+            method: split.method,
+            amount: portion,
+            reference: split.reference,
+            cashReceived: cash,
+            refresh: false,
+          );
+          pending[target.id] = _cents(pending[target.id]! - portion);
+          remaining = _cents(remaining - portion);
+          registered += portion;
+        }
+      }
+    } catch (error) {
+      if (_client != null) {
+        try {
+          await _loadRemoteData();
+        } catch (_) {
+          // Se informa el error original.
+        }
+      }
+      notifyListeners();
+      if (registered > 0) {
+        final detail = error is StateError ? error.message : '$error';
+        throw StateError(
+          'Se alcanzó a registrar S/ ${registered.toStringAsFixed(2)} antes '
+          'del error y el saldo pendiente se actualizó. Detalle: $detail',
+        );
+      }
+      rethrow;
+    }
+    if (_client != null) await _loadRemoteData();
+    _recordLocalAudit('Registrar pago', 'pagos', targets.first.id.toString());
+    notifyListeners();
+  }
+
+  Future<void> _postPayment(
+    int orderId, {
+    required String method,
+    required double amount,
+    required String reference,
+    double? cashReceived,
+    required bool refresh,
+  }) async {
     final databaseMethod = switch (method) {
       'Tarjeta' => 'TARJETA',
       'Yape' || 'Plin' || 'Yape / Plin' => 'YAPE_PLIN',
@@ -1350,52 +1601,52 @@ class RestaurantStore extends ChangeNotifier {
       await _client.rpc(
         'registrar_pago',
         params: {
-          'p_pedido_id': order.id,
+          'p_pedido_id': orderId,
           'p_metodo': databaseMethod,
           'p_monto': amount,
           'p_referencia': reference.trim().isEmpty ? null : reference.trim(),
           'p_efectivo_recibido': cashReceived,
-          'p_cobro_anticipado_confirmado': earlyPaymentConfirmed,
+          'p_cobro_anticipado_confirmado': false,
         },
       );
-      await _loadRemoteData();
-    } else {
-      final index = orders.indexWhere((item) => item.id == order.id);
-      final payments = [
-        ...order.payments,
-        PaymentEntry(
-          method: method,
-          amount: amount,
-          createdAt: DateTime.now(),
-          reference: reference.trim(),
-          cashReceived: role == StaffRole.cashier ? cashReceived : null,
-        ),
-      ];
-      final complete =
-          payments.fold<double>(0, (sum, payment) => sum + payment.amount) >=
-          order.total - 0.001;
-      orders[index] = order.copyWith(
-        payments: payments,
-        status: complete ? OrderStatus.paid : OrderStatus.forPayment,
-      );
-      if (complete) {
-        receipts.insert(0, {
-          'id': _nextId++,
-          'code':
-              'NV-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
-          'orderId': order.id,
-          'tableNumber': order.tableNumber,
-          'total': order.total,
-          'createdAt': DateTime.now().toIso8601String(),
-          'status': 'VIGENTE',
-          'payments': payments.map((payment) => payment.toJson()).toList(),
-        });
-        _recalculateTable(order.tableId);
-      }
-      await _persist();
+      if (refresh) await _loadRemoteData();
+      return;
     }
-    _recordLocalAudit('Registrar pago', 'pagos', order.id.toString());
-    notifyListeners();
+    final index = orders.indexWhere((item) => item.id == orderId);
+    if (index < 0) throw StateError('No se encontró el pedido.');
+    final order = orders[index];
+    final payments = [
+      ...order.payments,
+      PaymentEntry(
+        method: method,
+        amount: amount,
+        createdAt: DateTime.now(),
+        reference: reference.trim(),
+        cashReceived: cashReceived,
+      ),
+    ];
+    final complete =
+        payments.fold<double>(0, (sum, payment) => sum + payment.amount) >=
+        order.total - 0.001;
+    orders[index] = order.copyWith(
+      payments: payments,
+      status: complete ? OrderStatus.paid : OrderStatus.forPayment,
+    );
+    if (complete) {
+      receipts.insert(0, {
+        'id': _nextId++,
+        'code':
+            'NV-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+        'orderId': order.id,
+        'tableNumber': order.tableNumber,
+        'total': order.total,
+        'createdAt': DateTime.now().toIso8601String(),
+        'status': 'VIGENTE',
+        'payments': payments.map((payment) => payment.toJson()).toList(),
+      });
+      _recalculateTable(order.tableId);
+    }
+    await _persist();
   }
 
   Future<void> voidReceipt({
