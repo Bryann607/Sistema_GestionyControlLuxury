@@ -237,7 +237,13 @@ void main() {
     await tester.tap(find.text('Mesa 1'));
     await tester.pumpAndSettle();
     expect(find.text('Agregar productos a cocina'), findsOneWidget);
+<<<<<<< HEAD
+    final editTile = find.text('Editar pedido #$id');
+    await tester.ensureVisible(editTile);
+    await tester.tap(editTile);
+=======
     await tester.tap(find.text('Editar pedido #$id'));
+>>>>>>> fcde5862e3b93dda8654d60621ed3b4ad678d561
     await tester.pumpAndSettle();
 
     expect(find.text('Editar pedido · Mesa 1'), findsOneWidget);
