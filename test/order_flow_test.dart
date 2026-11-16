@@ -107,6 +107,35 @@ void main() {
     expect(accounts.single.orders, hasLength(2));
   });
 
+  test('Se pueden agregar varios consumos mientras Cocina prepara', () async {
+    final store = await cashierStore();
+    addTearDown(store.dispose);
+    final table = store.tables.firstWhere((value) => value.id == 1);
+    await store.createOrder(table: table, diners: 1, lines: [sampleLine()]);
+    final firstOrder = store.orders.first;
+    await store.advanceOrder(firstOrder);
+
+    await store.createOrder(
+      table: table,
+      diners: 1,
+      lines: [sampleLine(menuItemId: 10, name: 'Chicha morada jarra')],
+    );
+    await store.createOrder(
+      table: table,
+      diners: 1,
+      lines: [sampleLine(menuItemId: 20, name: 'Postre')],
+    );
+
+    final account = store.openAccounts.single;
+    expect(account.orders, hasLength(3));
+    expect(
+      account.orders
+          .skip(1)
+          .every((order) => order.parentOrderId == firstOrder.id),
+      isTrue,
+    );
+  });
+
   test(
     'Pagar una cuenta repartida en efectivo y Yape cubre toda la mesa',
     () async {
@@ -252,6 +281,59 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Editar pedido · Mesa 1'), findsOneWidget);
+  });
+
+  testWidgets('El consumo adicional usa la cuenta vigente al enviarse', (
+    tester,
+  ) async {
+    final store = await cashierStore();
+    addTearDown(store.dispose);
+    final table = store.tables.firstWhere((value) => value.id == 1);
+    await store.createOrder(table: table, diners: 1, lines: [sampleLine()]);
+    final firstOrderId = store.orders.first.id;
+
+    await tester.pumpWidget(MaterialApp(home: WaiterScreen(store: store)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mesa 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Agregar productos a cocina'));
+    await tester.pumpAndSettle();
+
+    await cook(store, firstOrderId);
+    final firstOrder = store.orders.firstWhere(
+      (order) => order.id == firstOrderId,
+    );
+    await store.payAccount(
+      accountOrders: [firstOrder],
+      splits: [
+        PaymentSplit(
+          method: 'Efectivo',
+          amount: firstOrder.total,
+          cashReceived: firstOrder.total,
+        ),
+      ],
+    );
+    await store.createOrder(
+      table: table,
+      diners: 1,
+      lines: [sampleLine(menuItemId: 10, name: 'Chicha morada jarra')],
+    );
+    final currentOrderId = store.orders.first.id;
+    final menuItem = store.menu.firstWhere((item) => item.available);
+    final addItem = find.byKey(ValueKey('add-menu-item-${menuItem.id}'));
+    await tester.ensureVisible(addItem);
+    await tester.tap(addItem);
+    await tester.pumpAndSettle();
+    final submit = find.widgetWithText(FilledButton, 'Enviar a cocina');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(store.orders, hasLength(3));
+    expect(store.orders.first.parentOrderId, currentOrderId);
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('Nuevo pedido vuelve a pedir mesa y no conserva la anterior', (

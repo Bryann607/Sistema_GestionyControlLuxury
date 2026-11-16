@@ -76,7 +76,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
   String category = 'Todas';
   final Map<int, _CartLine> cart = {};
   RestaurantOrder? editingOrder;
-  int? additionalParentId;
+  bool addingToOpenTable = false;
 
   RestaurantStore get store => widget.store;
   RestaurantTable? get selectedTable =>
@@ -87,7 +87,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
   void _clearOrderSelection() {
     selectedTableId = null;
     editingOrder = null;
-    additionalParentId = null;
+    addingToOpenTable = false;
     cart.clear();
   }
 
@@ -138,12 +138,12 @@ class _WaiterScreenState extends State<WaiterScreen> {
   void _openOrder(
     RestaurantTable table, {
     RestaurantOrder? editOrder,
-    RestaurantOrder? parentOrder,
+    bool isAdditionalOrder = false,
   }) {
     setState(() {
       selectedTableId = table.id;
       editingOrder = editOrder;
-      additionalParentId = parentOrder?.id;
+      addingToOpenTable = editOrder == null && isAdditionalOrder;
       diners = editOrder?.diners ?? (table.capacity < 2 ? table.capacity : 2);
       cart.clear();
       if (editOrder != null) {
@@ -185,12 +185,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
       if (editingOrder case final existing?) {
         await store.editOrder(order: existing, lines: lines, diners: diners);
       } else {
-        await store.createOrder(
-          table: table,
-          diners: diners,
-          lines: lines,
-          parentOrderId: additionalParentId,
-        );
+        await store.createOrder(table: table, diners: diners, lines: lines);
       }
       if (!mounted) return;
       final wasEditing = editingOrder != null;
@@ -198,7 +193,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
         cart.clear();
         selectedTableId = null;
         editingOrder = null;
-        additionalParentId = null;
+        addingToOpenTable = false;
         page = 2;
       });
       await LuxuryFeedback.success(context,
@@ -285,7 +280,7 @@ class _WaiterScreenState extends State<WaiterScreen> {
                   ),
                   onTap: () {
                     Navigator.pop(context);
-                    _openOrder(table, parentOrder: additionalParent);
+                    _openOrder(table, isAdditionalOrder: true);
                   },
                 )
               else if (!hasUnsettledOrder)
@@ -514,12 +509,12 @@ class _WaiterScreenState extends State<WaiterScreen> {
                   title:
                       '${editingOrder != null
                           ? 'Editar pedido'
-                          : additionalParentId != null
+                          : addingToOpenTable
                           ? 'Consumo adicional'
                           : 'Nueva comanda'} · Mesa ${table.number}',
                   subtitle: editingOrder != null
                       ? 'Solo se edita antes de iniciar la preparación. Los agregados se envían como una comanda nueva a cocina.'
-                      : additionalParentId != null
+                      : addingToOpenTable
                       ? 'Los productos se enviarán como una nueva comanda a cocina.'
                       : 'Elige los platos y agrega observaciones especiales',
                   trailing: IconButton(

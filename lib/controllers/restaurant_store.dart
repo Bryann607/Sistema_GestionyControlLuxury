@@ -1157,7 +1157,6 @@ class RestaurantStore extends ChangeNotifier {
     required RestaurantTable table,
     required List<OrderLine> lines,
     required int diners,
-    int? parentOrderId,
   }) async {
     if (lines.isEmpty) {
       throw StateError(
@@ -1180,7 +1179,7 @@ class RestaurantStore extends ChangeNotifier {
       );
     }
     // Con una cuenta abierta, todo consumo nuevo se suma a ella.
-    final parentId = parentOrderId ?? additionalOrderParent(current)?.id;
+    final parentId = additionalOrderParent(current)?.id;
     if (parentId != null) {
       final parent = orders.where((order) => order.id == parentId).firstOrNull;
       if (parent == null ||
